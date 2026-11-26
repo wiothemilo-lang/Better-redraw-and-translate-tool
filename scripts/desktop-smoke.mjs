@@ -96,6 +96,7 @@ try {
   await page.reload()
   await page.locator("#recover-project").waitFor({ state: "visible" })
   await page.locator("#recent-projects-button").click()
+  await page.locator("#project-library").waitFor({ state: "visible" })
   assert.match(await page.locator("#recent-projects").textContent(), /Khôi phục/)
   await page.locator("#recent-projects button").filter({ hasText: "Khôi phục" }).first().click()
   await page.getByText("Đã mở dự án với 1 trang.").waitFor()
