@@ -17,6 +17,7 @@ import { setupOcr } from "./controllers/ocr.js"
 import { setupExports } from "./controllers/export.js"
 import { setupDialogs } from "./controllers/dialogs.js"
 import { setupGestures } from "./controllers/gestures.js"
+import { setupChat } from "./controllers/chat.js"
 
 const history = new EditHistory()
 const ownedUrls = new Set()
@@ -248,6 +249,7 @@ function syncProjectActions() {
   byId("script-file").disabled = projectBusy()
 }
 
+let chat
 function syncTranslationActions() {
   byId("resume-translation").disabled = projectBusy() || !remainingTranslations(state.pages, translation.settings()).length
   byId("pages").querySelectorAll(".page-job").forEach((element, index) => {
@@ -255,6 +257,7 @@ function syncTranslationActions() {
     element.dataset.state = page.translationJob?.state ?? "pending"
     element.textContent = translationLabel(page, translation.settings())
   })
+  chat?.refreshModelBadge()
 }
 
 function syncToolControls() {
@@ -1122,7 +1125,15 @@ const gestures = setupGestures({
   commitLiveForm: commitLiveFormCheckpoint, selectBox, toggleSelectBox,
   addBox, freezeCleanup, rectStyle, paintPreview, renderCleanupOverlay, changePage,
 })
-const translation = setupTranslation({ ...shared, pageForScript, applyTranslation, onSettingsChange: syncTranslationActions })
+const translation = setupTranslation({
+  ...shared,
+  pageForScript,
+  applyTranslation,
+  onSettingsChange: () => {
+    syncTranslationActions()
+    chat?.refreshModelBadge()
+  },
+})
 const projects = setupProjects({
   ...shared, projectSettings, defaultProjectSettings, history, openImage,
   selectPage, selectedIndex, updateFitLabel, releaseUnusedImages,
@@ -1142,6 +1153,14 @@ setupExports({
   readTranslationSettings: translation.settings,
   isNativeReady: () => projects.ready,
   commitLiveForm: commitLiveFormCheckpoint,
+})
+chat = setupChat({
+  ...shared,
+  selectedIndex,
+  commitLiveForm: commitLiveFormCheckpoint,
+  readTranslationSettings: translation.settings,
+  registerFontName,
+  renderFontOptions,
 })
 
 restoreCustomFonts().then((restored) => {

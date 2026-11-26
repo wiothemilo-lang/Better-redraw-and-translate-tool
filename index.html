@@ -15,6 +15,7 @@
       <a href="#library" data-view="library">Thư viện chương</a>
     </nav>
     <div class="header-actions">
+      <button type="button" class="button header-secondary" id="open-chat" aria-pressed="false" title="Mở Trợ lý AI Harness (Web Search &amp; công cụ biên tập)">Trợ lý AI</button>
       <button type="button" class="button header-secondary" id="open-find" title="Tìm và thay thế (Ctrl+H)">Tìm &amp; thay</button>
       <button type="button" class="button header-secondary" id="open-shortcuts" title="Phím tắt (?)">Phím tắt</button>
       <button type="button" class="button header-export" id="export-all">Xuất cả lượt</button>
@@ -457,6 +458,56 @@
       </div>
     </form>
   </dialog>
+  <aside id="chat-panel" class="chat-panel" aria-label="Trợ lý AI Harness" hidden>
+    <div class="chat-header">
+      <div class="chat-title-group">
+        <h2>Trợ lý AI · Harness</h2>
+        <span id="chat-model-badge" class="chat-badge">Gemini</span>
+      </div>
+      <div class="chat-header-actions">
+        <button type="button" id="chat-clear" class="button">Mới</button>
+        <button type="button" id="chat-close" class="button" aria-label="Đóng khung chat">×</button>
+      </div>
+    </div>
+    <div class="chat-controls">
+      <div class="style-toggles">
+        <label class="choice"><input id="chat-allow-web" type="checkbox" checked> Web Search</label>
+        <label class="choice"><input id="chat-allow-edits" type="checkbox" checked> Cho phép sửa khung &amp; thuật ngữ</label>
+      </div>
+      <details class="chat-search-config">
+        <summary>Cấu hình Web Search</summary>
+        <label class="field" for="chat-search-provider">Nguồn tìm kiếm
+          <select id="chat-search-provider">
+            <option value="auto">Tự động (DuckDuckGo/Jisho/Wiki miễn phí)</option>
+            <option value="tavily">Tavily Search API (HTTPS)</option>
+            <option value="searxng">SearXNG tự host</option>
+          </select>
+        </label>
+        <label class="field" id="chat-search-url-field" for="chat-search-url" hidden>URL SearXNG
+          <input id="chat-search-url" type="url" placeholder="http://localhost:8080">
+        </label>
+        <label class="field" id="chat-search-key-field" for="chat-search-key" hidden>API Key Tavily
+          <input id="chat-search-key" type="password" autocomplete="off">
+        </label>
+      </details>
+      <div class="chat-chips" role="group" aria-label="Gợi ý nhanh">
+        <button type="button" class="button" data-chat-prompt="Đọc các khung thoại trên trang hiện tại, tra web các tên riêng hoặc thuật ngữ tiếng Nhật/nước ngoài cần xác minh rồi đề xuất bổ sung vào Bảng thuật ngữ.">Tra thuật ngữ</button>
+        <button type="button" class="button" data-chat-prompt="Kiểm tra các khung đang bị tràn chữ trên trang hiện tại và tự khớp cỡ chữ giúp mình.">Khớp tràn khung</button>
+        <button type="button" class="button" data-chat-prompt="Đọc lời thoại trang hiện tại cùng Bảng thuật ngữ, kiểm tra xem xưng hô và tên nhân vật có nhất quán không.">Rà xưng hô</button>
+        <button type="button" class="button" data-chat-prompt="Tóm tắt trạng thái dự án hiện tại (số trang, khung thoại, câu chưa đặt, bảng thuật ngữ).">Tổng quan</button>
+      </div>
+    </div>
+    <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+    <p id="chat-status" class="chat-status muted" role="status"></p>
+    <form id="chat-form" class="chat-composer">
+      <textarea id="chat-input" rows="2" placeholder="Hỏi AI tra web, sửa khung, cập nhật thuật ngữ… (Enter gửi, Shift+Enter xuống dòng)"></textarea>
+      <div class="form-actions">
+        <button type="submit" id="chat-send" class="button primary">Gửi</button>
+        <button type="button" id="chat-stop" class="button danger" hidden>Dừng</button>
+      </div>
+    </form>
+  </aside>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

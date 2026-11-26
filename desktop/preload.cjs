@@ -21,4 +21,6 @@ contextBridge.exposeInMainWorld("khungThoaiDesktop", {
   projectCancelRead: (id) => invoke("project-cancel-read", id),
   projectBegin: (mode, name, projectId) => invoke("project-begin", mode, name, projectId),
   projectWrite: (id, operation, options, data) => invoke("project-write", id, operation, options, data),
+  webSearch: (query, options) => invoke("web-search", query, options),
+  fetchUrl: (url, options) => invoke("fetch-url", url, options),
 })
