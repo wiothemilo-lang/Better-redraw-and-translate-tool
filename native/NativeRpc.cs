@@ -31,6 +31,9 @@ internal static class NativeRpc
                 if (request["version"]?.GetValue<int>() != 1) throw new InvalidDataException("Unsupported protocol version.");
                 var options = request["options"]?.AsObject() ?? new JsonObject();
                 var operation = request["operation"]!.GetValue<string>();
+                NativeProgress.Report = (progress, stage) => Write(new JsonObject {
+                    ["version"] = 1, ["event"] = "progress", ["progress"] = progress, ["stage"] = stage,
+                }, []);
                 (reply, bytes) = operation switch
                 {
                     "capabilities" => (await LocalOcr.Capabilities(), []),
@@ -47,17 +50,24 @@ internal static class NativeRpc
             {
                 reply = new JsonObject { ["ok"] = false, ["error"] = error.Message };
             }
+            NativeProgress.Report = null;
             reply["version"] = 1;
-            metadata = Encoding.UTF8.GetBytes(reply.ToJsonString());
-            "KTR1"u8.CopyTo(header);
-            BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(4), metadata.Length);
-            BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), bytes.Length);
-            output.Write(header);
+            Write(reply, bytes);
+        }
+        return 0;
+
+        void Write(JsonObject reply, byte[] bytes)
+        {
+            var metadata = Encoding.UTF8.GetBytes(reply.ToJsonString());
+            Span<byte> responseHeader = stackalloc byte[12];
+            "KTR1"u8.CopyTo(responseHeader);
+            BinaryPrimitives.WriteInt32LittleEndian(responseHeader[4..], metadata.Length);
+            BinaryPrimitives.WriteInt32LittleEndian(responseHeader[8..], bytes.Length);
+            output.Write(responseHeader);
             output.Write(metadata);
             output.Write(bytes);
             output.Flush();
         }
-        return 0;
     }
 
     private static (JsonObject, byte[]) Redraw(JsonObject options, byte[] data)

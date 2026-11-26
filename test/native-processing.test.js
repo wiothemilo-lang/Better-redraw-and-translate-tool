@@ -108,3 +108,63 @@ test("project readers keep a consistent snapshot across an atomic replacement", 
   assert.deepEqual(Buffer.concat([first.data, last.data]), old)
   await worker.call("fileClose", { id: result.id })
 })
+
+test("preprocessing rotation preserves source pixel positions and reports rotated dimensions", { skip: !available }, async (t) => {
+  const worker = new native.NativeWorker(executable)
+  t.after(() => worker.close())
+  const data = Buffer.from([0, 50, 100, 150, 200, 255].flatMap((value) => [value, value, value, 255]))
+  const base = await worker.call("preprocess", { width: 2, height: 3, scale: 1, denoise: false }, data)
+  const rotated = await worker.call("preprocess", { width: 2, height: 3, scale: 1, denoise: false, rotation: 90 }, data)
+  assert.equal(rotated.result.width, 3)
+  assert.equal(rotated.result.height, 2)
+  assert.equal(rotated.data[0], base.data[4 * 4])
+  assert.equal(rotated.data[8], base.data[0])
+  await assert.rejects(worker.call("preprocess", { width: 2, height: 3, rotation: 45 }, data), /rotation/)
+})
+
+test("OCR maps rotated text boxes back into the input image coordinate system", { skip: !available }, async (t) => {
+  const worker = new native.NativeWorker(executable)
+  t.after(() => worker.close())
+  const { result: capabilities } = await worker.call("capabilities")
+  if (!capabilities.languages.includes("eng")) return t.skip("English Tesseract language is unavailable")
+  const { gunzipSync } = await import("node:zlib")
+  const pixels = gunzipSync(await readFile("test/fixtures/comic/english.rgba.gz"))
+  const rotated = Buffer.alloc(pixels.length)
+  for (let y = 0; y < 220; y++) {
+    for (let x = 0; x < 600; x++) pixels.copy(rotated, (x * 220 + 219 - y) * 4, (y * 600 + x) * 4, (y * 600 + x + 1) * 4)
+  }
+  const { result } = await worker.call("ocr", { width: 220, height: 600, rotation: 270, scale: 1, denoise: false, language: "eng", psm: 6 }, rotated)
+  assert.match(result.lines.map(({ text }) => text).join(" "), /HELLO WORLD/)
+  const box = result.lines[0].box
+  assert.ok((box[2] - box[0]) * 220 < (box[3] - box[1]) * 600)
+  assert.ok(box.every((value) => value >= 0 && value <= 1000))
+})
+
+test("native client reads fragmented progress and final frames from a coalesced stdout chunk", async () => {
+  const worker = new native.NativeWorker(executable)
+  const events = []
+  const frame = (metadata, bytes = Buffer.alloc(0)) => {
+    const json = Buffer.from(JSON.stringify(metadata))
+    const header = Buffer.alloc(12)
+    header.write("KTR1")
+    header.writeUInt32LE(json.length, 4)
+    header.writeUInt32LE(bytes.length, 8)
+    return Buffer.concat([header, json, bytes])
+  }
+  const reply = new Promise((resolve, reject) => {
+    worker.requestInFlight = {
+      header: Buffer.alloc(12), offset: 0, data: null, metadataLength: 0,
+      onProgress: (progress, stage) => events.push({ progress, stage }),
+      resolve, reject, deadline: setTimeout(() => reject(new Error("Timed out")), 1000),
+    }
+  })
+  const bytes = Buffer.concat([
+    frame({ version: 1, event: "progress", progress: 40, stage: "OCR" }),
+    frame({ version: 1, ok: true }, Buffer.from([10, 20])),
+  ])
+  worker.read(bytes.subarray(0, 7))
+  worker.read(bytes.subarray(7))
+  const result = await reply
+  assert.deepEqual(events, [{ progress: 40, stage: "OCR" }])
+  assert.deepEqual([...result.data], [10, 20])
+})

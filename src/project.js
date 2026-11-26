@@ -28,6 +28,7 @@ export function projectStyle(style) {
     size, font, color, align, rotation, fill,
     bold = false, italic = false, uppercase = false, vertical = false,
     lineHeight = 1.15, strokeWidth = 0, strokeColor = "#ffffff",
+    shadowBlur = 0, shadowColor = "#000000",
     fillColor = "#ffffff", fillShape = "rect",
   } = style ?? {}
   if (!inRange(size, 8, 400) || !isText(font) || !font.trim() || font.length > 80 || /[\u0000-\u001f"\\]/.test(font) ||
@@ -36,6 +37,7 @@ export function projectStyle(style) {
       typeof bold !== "boolean" || typeof italic !== "boolean" || typeof uppercase !== "boolean" || typeof vertical !== "boolean" ||
       !inRange(lineHeight, .8, 2.2) || !inRange(strokeWidth, 0, 24) ||
       !isText(strokeColor) || !/^#[\da-f]{6}$/i.test(strokeColor) ||
+      !inRange(shadowBlur, 0, 24) || !isText(shadowColor) || !/^#[\da-f]{6}$/i.test(shadowColor) ||
       !isText(fillColor) || !/^#[\da-f]{6}$/i.test(fillColor) ||
       !["rect", "ellipse", "rounded"].includes(fillShape)) {
     throw invalidProject()
@@ -48,6 +50,7 @@ export function projectStyle(style) {
     ...(vertical && { vertical }),
     ...(lineHeight !== 1.15 && { lineHeight }),
     ...(strokeWidth > 0 && { strokeWidth, strokeColor }),
+    ...(shadowBlur > 0 && { shadowBlur, shadowColor }),
     ...(fillColor.toLowerCase() !== "#ffffff" && { fillColor }),
     ...(fillShape !== "rect" && { fillShape }),
   }
@@ -125,7 +128,8 @@ function projectPage(page) {
   }
 }
 
-function projectData({ pages, queue, settings, currentPage, fit, presets = [] }) {
+function projectData({ pages, queue, settings, currentPage, fit, presets = [], projectId }) {
+  if (projectId !== undefined && (typeof projectId !== "string" || !/^[0-9a-f-]{36}$/i.test(projectId))) throw invalidProject()
   settings = { "translation-glossary": "", ...settings }
   if (!Array.isArray(pages) || pages.length > projectPageLimit ||
       !Array.isArray(queue) || !queue.every(isText) || !projectSettingIds.every((id) => isText(settings?.[id])) ||
@@ -135,6 +139,7 @@ function projectData({ pages, queue, settings, currentPage, fit, presets = [] })
     throw invalidProject()
   }
   return { pages: pages.map(projectPage), queue, settings: Object.fromEntries(projectSettingIds.map((id) => [id, settings[id]])), currentPage, fit,
+    ...(projectId && { projectId }),
     presets: presets.map(({ name, style }) => ({ name, style: projectStyle(style) })),
   }
 }

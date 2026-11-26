@@ -6,3 +6,4 @@ desktop-dist/
 native/bin/
 native/obj/
 native/out/
+artifacts/

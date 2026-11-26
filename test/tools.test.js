@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { groupDialogue } from "../src/io.js"
 import {
+  alignBoxes,
+  distributeBoxes,
   duplicateBox,
   exportDialogueScript,
   findMatches,
@@ -11,6 +13,7 @@ import {
   replaceMatches,
   resizeBox,
   rotateBox,
+  snapBox,
 } from "../src/tools.js"
 
 function assertRectClose(actual, expected) {
@@ -111,4 +114,59 @@ test("exportDialogueScript outputs valid TXT, CSV and JSON formats", () => {
   const json = JSON.parse(exportDialogueScript(pages, "json"))
   assert.equal(json.pages.length, 2)
   assert.deepEqual(json.pages[0].unplaced, ["Chờ"])
+})
+
+test("resizeBox projects pointer deltas into local frame for rotated boxes", () => {
+  const start = { x: .3, y: .3, w: .2, h: .1 }
+  // Rotated 90 deg clockwise: local +x (east handle) points downward (+y in page coords).
+  const grown = resizeBox(start, "e", { x: 0, y: .1 }, { rotation: 90, aspect: 1 })
+  assert.ok(Math.abs(grown.w - .3) < 1e-9)
+  assert.ok(Math.abs(grown.h - .1) < 1e-9)
+  // Center moved +0.05 downward while keeping the west (top) edge anchored at y = 0.25.
+  assert.ok(Math.abs((grown.y + grown.h / 2) - .4) < 1e-9)
+  assert.ok(Math.abs((grown.x + grown.w / 2) - .4) < 1e-9)
+
+  // Non-square page (aspect = 0.5) rotated 90 deg: dragging east handle down by dy=0.1
+  // increases local width in y-units by 0.1, which is 0.2 in normalized x-units!
+  const aspectGrown = resizeBox({ x: .4, y: .4, w: .2, h: .1 }, "e", { x: 0, y: .1 }, { rotation: 90, aspect: .5 })
+  assert.ok(Math.abs(aspectGrown.w - .4) < 1e-9)
+  assert.ok(Math.abs(aspectGrown.h - .1) < 1e-9)
+})
+
+test("snapBox snaps box edges and centers to page center and neighbor boxes", () => {
+  const others = [{ x: .1, y: .15, w: .15, h: .1 }]
+  // Near page center x = 0.5 (box center at 0.504).
+  const centerSnap = snapBox({ x: .404, y: .6, w: .2, h: .1 }, others, { thresholdX: .01, thresholdY: .01 })
+  assert.ok(Math.abs(centerSnap.x - .4) < 1e-9)
+  assert.deepEqual(centerSnap.guides, [{ axis: "x", pos: .5 }])
+
+  // Near neighbor left edge (0.1) and bottom edge (0.25).
+  const edgeSnap = snapBox({ x: .105, y: .254, w: .15, h: .1 }, others, { thresholdX: .01, thresholdY: .01 })
+  assert.ok(Math.abs(edgeSnap.x - .1) < 1e-9)
+  assert.ok(Math.abs(edgeSnap.y - .25) < 1e-9)
+  assert.equal(edgeSnap.guides.length, 2)
+})
+
+test("alignBoxes and distributeBoxes align and evenly space multi-selected boxes", () => {
+  const boxes = [
+    { id: "a", x: .1, y: .1, w: .1, h: .1 },
+    { id: "b", x: .3, y: .3, w: .2, h: .1 },
+    { id: "c", x: .7, y: .5, w: .1, h: .2 },
+  ]
+  assert.equal(alignBoxes(boxes, ["a", "b"], "left"), true)
+  assert.equal(boxes[0].x, .1)
+  assert.equal(boxes[1].x, .1)
+
+  assert.equal(alignBoxes(boxes, ["a", "c"], "bottom"), true)
+  assert.ok(Math.abs(boxes[0].y - .6) < 1e-9)
+
+  // Reset positions for horizontal distribution: span 0.1..0.8 (0.7), total widths = 0.4, gap = 0.15.
+  boxes[0].x = .1; boxes[1].x = .25; boxes[2].x = .7
+  assert.equal(distributeBoxes(boxes, ["a", "b", "c"], "horizontal"), true)
+  assert.ok(Math.abs(boxes[1].x - .35) < 1e-9)
+
+  // Vertical distribution: span 0.1..0.8 (0.7), total heights = 0.4, gap = 0.15.
+  boxes[0].y = .1; boxes[1].y = .15; boxes[2].y = .6
+  assert.equal(distributeBoxes(boxes, ["a", "b", "c"], "vertical"), true)
+  assert.ok(Math.abs(boxes[1].y - .35) < 1e-9)
 })

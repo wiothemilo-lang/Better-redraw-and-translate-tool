@@ -1,3 +1,4 @@
+const { execFile } = require("node:child_process")
 const path = require("node:path")
 const { existsSync } = require("node:fs")
 const { TextureWorker } = require("./worker.cjs")
@@ -6,9 +7,11 @@ const maximumData = 512 * 1024 * 1024
 const maximumMetadata = 4 * 1024 * 1024
 
 class NativeWorker extends TextureWorker {
-  constructor(executable) {
+  constructor(executable, { isolated = false } = {}) {
     super(executable)
     this.args = ["--rpc"]
+    this.detached = isolated && process.platform !== "win32"
+    this.isolated = isolated
     const ocr = path.join(path.dirname(executable), "ocr")
     const engine = path.join(ocr, "tesseract" + (process.platform === "win32" ? ".exe" : ""))
     this.environment = { ...process.env }
@@ -18,7 +21,7 @@ class NativeWorker extends TextureWorker {
     }
   }
 
-  call(operation, options = {}, data = new Uint8Array()) {
+  call(operation, options = {}, data = new Uint8Array(), onProgress) {
     if (!this.available) return Promise.reject(new Error("Chưa biên dịch worker C#. Chạy npm run desktop:native."))
     if (!ArrayBuffer.isView(data) || data.BYTES_PER_ELEMENT !== 1 || data.byteLength > maximumData || this.queued >= 8) {
       return Promise.reject(new Error("Tác vụ native vượt giới hạn dữ liệu hoặc hàng đợi."))
@@ -28,7 +31,7 @@ class NativeWorker extends TextureWorker {
     this.queued++
     // Copy at enqueue time so later edits cannot mutate an in-flight request.
     const bytes = Buffer.from(data)
-    const run = () => this.request(metadata, bytes, operation === "ocr" ? 90000 : 120000)
+    const run = () => this.request(metadata, bytes, operation === "ocr" ? 90000 : 120000, onProgress)
     const result = this.tail.then(run)
     this.tail = result.catch(() => {})
     return result.finally(() => { this.queued-- })
@@ -40,7 +43,7 @@ class NativeWorker extends TextureWorker {
     return this.call("redraw", options, pixels).then(({ data }) => data.length ? data : null).catch(() => null)
   }
 
-  request(metadata, bytes, timeout) {
+  request(metadata, bytes, timeout, onProgress) {
     if (!this.child) this.start()
     const child = this.child
     const header = Buffer.alloc(12)
@@ -50,13 +53,31 @@ class NativeWorker extends TextureWorker {
     return new Promise((resolve, reject) => {
       this.requestInFlight = {
         resolve, reject, deadline: setTimeout(() => this.stop(new Error("Native worker timed out.")), timeout),
-        header: Buffer.alloc(12), offset: 0, data: null, metadataLength: 0,
+        onProgress, header: Buffer.alloc(12), offset: 0, data: null, metadataLength: 0,
       }
       const fail = (error) => { if (error && this.child === child) this.stop(error) }
       child.stdin.write(header, fail)
       child.stdin.write(metadata, fail)
       child.stdin.write(bytes, fail)
     })
+  }
+
+  stop(error) {
+    const child = this.child
+    if (this.isolated && child?.pid) {
+      if (process.platform === "win32") {
+        if (this.killing) return
+        this.killing = true
+        execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }, () => {
+          this.killing = false
+          super.stop(error)
+        })
+        return
+      } else {
+        try { process.kill(-child.pid, "SIGKILL") } catch {}
+      }
+    }
+    super.stop(error)
   }
 
   read(chunk) {
@@ -78,18 +99,27 @@ class NativeWorker extends TextureWorker {
       pending.offset = 0
       chunk = chunk.subarray(count)
     }
-    if (chunk.length > pending.data.length - pending.offset) return this.stop(new Error("Oversized native frame."))
-    chunk.copy(pending.data, pending.offset)
-    pending.offset += chunk.length
+    const count = Math.min(chunk.length, pending.data.length - pending.offset)
+    chunk.copy(pending.data, pending.offset, 0, count)
+    pending.offset += count
+    const rest = chunk.subarray(count)
     if (pending.offset !== pending.data.length) return
-    this.requestInFlight = null
-    clearTimeout(pending.deadline)
     try {
       const result = JSON.parse(pending.data.toString("utf8", 0, pending.metadataLength))
+      if (result.event === "progress" && result.version === 1) {
+        pending.offset = 0
+        pending.data = null
+        pending.onProgress?.(result.progress, result.stage)
+        if (rest.length) this.read(rest)
+        return
+      }
+      this.requestInFlight = null
+      clearTimeout(pending.deadline)
       if (result.version !== 1 || typeof result.ok !== "boolean") throw new Error("Unsupported native response.")
       if (!result.ok) pending.reject(new Error(result.error))
       else pending.resolve({ result, data: pending.data.subarray(pending.metadataLength) })
-    } catch (error) { pending.reject(error) }
+      if (rest.length) this.stop(new Error("Unexpected bytes after native response."))
+    } catch (error) { clearTimeout(pending.deadline); this.requestInFlight = null; pending.reject(error); this.stop(error) }
   }
 }
 

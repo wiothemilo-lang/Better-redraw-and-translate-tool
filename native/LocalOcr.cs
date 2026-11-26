@@ -56,7 +56,7 @@ internal static class LocalOcr
         if (!language.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '+') || language.Length > 100)
             throw new InvalidDataException("Invalid OCR language.");
         var psm = (int?)options["psm"] ?? 11;
-        if (psm is not (3 or 6 or 11)) throw new InvalidDataException("Invalid OCR segmentation.");
+        if (psm is not (3 or 5 or 6 or 11)) throw new InvalidDataException("Invalid OCR segmentation.");
         var (processed, pixels) = NativeImaging.Preprocess(options, data);
         var scaledWidth = (int)processed["width"]!;
         var scaledHeight = (int)processed["height"]!;
@@ -64,13 +64,15 @@ internal static class LocalOcr
         try
         {
             await File.WriteAllBytesAsync(path, NativeImaging.Png(pixels, scaledWidth, scaledHeight));
+            NativeProgress.Emit(75, "Tesseract đang nhận dạng chữ");
             var tsv = await Run(path, "stdout", "-l", language, "--psm", psm.ToString(), "tsv");
+            NativeProgress.Emit(90, "Ghép dòng và chuẩn hóa tọa độ");
             var groups = new Dictionary<string, List<string[]>>();
             foreach (var row in tsv.Split('\n').Skip(1))
             {
                 var cells = row.TrimEnd('\r').Split('\t', 12);
                 if (cells.Length != 12 || cells[0] != "5" || string.IsNullOrWhiteSpace(cells[11]) ||
-                    !double.TryParse(cells[10], CultureInfo.InvariantCulture, out var confidence) || confidence < 30) continue;
+                    !double.TryParse(cells[10], CultureInfo.InvariantCulture, out var confidence) || confidence < 0) continue;
                 var key = string.Join("-", cells.Take(5));
                 if (!groups.TryGetValue(key, out var words)) groups[key] = words = [];
                 words.Add(cells);
@@ -82,14 +84,28 @@ internal static class LocalOcr
                 var top = words.Min(word => int.Parse(word[7]));
                 var right = words.Max(word => int.Parse(word[6]) + int.Parse(word[8]));
                 var bottom = words.Max(word => int.Parse(word[7]) + int.Parse(word[9]));
-                var normLeft = Math.Clamp(Normalize(left, scaledWidth), 0, 999);
-                var normTop = Math.Clamp(Normalize(top, scaledHeight), 0, 999);
-                var normRight = Math.Clamp(Normalize(right, scaledWidth), normLeft + 1, 1000);
-                var normBottom = Math.Clamp(Normalize(bottom, scaledHeight), normTop + 1, 1000);
+                var l = Normalize(left, scaledWidth);
+                var t = Normalize(top, scaledHeight);
+                var r = Normalize(right, scaledWidth);
+                var b = Normalize(bottom, scaledHeight);
+                var (rl, rt, rr, rb) = ((int?)options["rotation"] ?? 0) switch {
+                    90 => (t, 1000 - r, b, 1000 - l),
+                    180 => (1000 - r, 1000 - b, 1000 - l, 1000 - t),
+                    270 => (1000 - b, l, 1000 - t, r),
+                    _ => (l, t, r, b),
+                };
+                var normLeft = Math.Clamp(rl, 0, 999);
+                var normTop = Math.Clamp(rt, 0, 999);
+                var normRight = Math.Clamp(rr, normLeft + 1, 1000);
+                var normBottom = Math.Clamp(rb, normTop + 1, 1000);
+                var joined = language.StartsWith("jpn") || language.StartsWith("chi")
+                    ? string.Join("", words.Select(word => word[11]))
+                    : JoinWords(words.Select(word => word[11]));
                 lines.Add((JsonNode)new JsonObject {
                     ["id"] = "L" + (lines.Count + 1),
-                    ["text"] = JoinWords(words.Select(word => word[11])),
+                    ["text"] = joined,
                     ["box"] = new JsonArray(normLeft, normTop, normRight, normBottom),
+                    ["confidence"] = words.Average(word => double.Parse(word[10], CultureInfo.InvariantCulture)),
                 });
             }
             return new JsonObject { ["lines"] = lines, ["width"] = width, ["height"] = height };

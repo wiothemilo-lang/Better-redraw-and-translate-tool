@@ -1,3 +1,5 @@
+import { listCustomFonts, saveCustomFont } from "./web-storage.js"
+
 export const builtInFonts = ["Arial", "Georgia", "Verdana", "Times New Roman"]
 const psdFontMap = {
   Arial: "ArialMT",
@@ -30,8 +32,29 @@ export async function loadCustomFont(file) {
   if (typeof FontFace === "undefined" || !document?.fonts) throw new Error("Trình duyệt không hỗ trợ nạp font cục bộ.")
   const family = registerFontName(file.name.replace(fontExtensions, "").replace(/[_-]+/g, " "))
   if (!family) throw new Error("Tên font không hợp lệ.")
-  const face = new FontFace(family, await file.arrayBuffer())
+  const buffer = await file.arrayBuffer()
+  const face = new FontFace(family, buffer.slice(0))
   const loaded = await face.load()
   document.fonts.add(loaded)
+  await saveCustomFont(family, buffer).catch(() => {})
   return family
+}
+
+export async function restoreCustomFonts() {
+  if (typeof FontFace === "undefined" || !document?.fonts) return []
+  const saved = await listCustomFonts().catch(() => [])
+  const restored = []
+  for (const { family, buffer } of saved) {
+    const clean = registerFontName(family)
+    if (!clean) continue
+    try {
+      const face = new FontFace(clean, buffer.slice(0))
+      const loaded = await face.load()
+      document.fonts.add(loaded)
+      restored.push(clean)
+    } catch {
+      // Skip corrupt stored font entry.
+    }
+  }
+  return restored
 }

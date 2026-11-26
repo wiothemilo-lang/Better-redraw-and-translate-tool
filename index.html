@@ -26,11 +26,14 @@
       <section class="side-section">
         <div class="section-heading"><h1>Trang truyện</h1><span id="page-count">0 / 50</span></div>
         <div class="form-actions project-actions">
+          <button type="button" class="button" id="new-project">Dự án mới</button>
           <button type="button" class="button" id="open-project">Mở dự án</button>
           <button type="button" class="button" id="save-project">Lưu dự án</button>
           <input type="file" id="project-file" accept=".khungthoai" hidden>
         </div>
+        <p id="project-dirty" class="muted" role="status"></p>
         <div id="desktop-recovery" hidden>
+          <button type="button" id="recent-projects-button" class="button">Dự án gần đây và phục hồi</button>
           <p id="autosave-status" class="muted" role="status"></p>
           <div class="form-actions">
             <button type="button" id="recover-project" class="button" hidden>Khôi phục tự lưu</button>
@@ -114,8 +117,12 @@
         <p class="muted" id="native-status"></p>
         <label class="field" for="local-ocr-language">Ngôn ngữ đã cài<select id="local-ocr-language"></select></label>
         <label class="field" for="local-ocr-layout">Bố cục
-          <select id="local-ocr-layout"><option value="11">Chữ rải rác</option><option value="6">Một khối chữ</option><option value="3">Tự động toàn trang</option></select>
+          <select id="local-ocr-layout"><option value="11">Chữ rải rác</option><option value="6">Một khối chữ</option><option value="5">Chữ dọc Nhật (jpn_vert)</option><option value="3">Tự động toàn trang</option></select>
         </label>
+        <label class="field" for="ocr-rotation">Xoay vùng trước khi đọc
+          <select id="ocr-rotation"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select>
+        </label>
+        <label class="choice"><input type="checkbox" id="ocr-group" checked>Gom dòng gần nhau thành khung thoại</label>
         <label class="field" for="ocr-scale">Phóng lớn
           <select id="ocr-scale"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option></select>
         </label>
@@ -153,6 +160,7 @@
           <select id="cleanup-tool">
             <option value="text">Di chuyển &amp; chỉnh khung</option>
             <option value="pan">Kéo bàn vẽ (Hand)</option>
+            <option value="bubble">Chấm bong bóng tự động</option>
             <option value="region">Khoanh vùng xóa</option>
             <option value="erase">Cọ giữ nền gốc</option>
             <option value="restore">Cọ thêm vùng xóa</option>
@@ -165,6 +173,7 @@
         <label for="paint-color" id="paint-color-field">Màu cọ<input id="paint-color" type="color" value="#ffffff"></label>
         <label for="paint-opacity" id="paint-opacity-field">Độ đục (%)<input id="paint-opacity" type="number" min="5" max="100" value="100"></label>
         <span id="eyedropper-readout" class="muted" hidden></span>
+        <button type="button" id="undo-retouch" class="button" hidden>Hoàn tác nét cọ</button>
         <button type="button" id="clear-retouch" class="button danger" hidden>Xóa nét vẽ tay</button>
         <label class="choice"><input type="checkbox" id="show-cleanup" checked>Hiện redraw</label>
         <label class="choice"><input type="checkbox" id="show-text" checked>Hiện chữ</label>
@@ -181,6 +190,7 @@
           <div id="overlays" class="overlays"></div>
         </div>
       </div>
+      <section id="task-panel" class="side-section" hidden><h2>Tác vụ</h2><ol id="task-list"></ol></section>
       <p id="status" class="status" role="status" aria-live="polite">Sẵn sàng.</p>
     </section>
 
@@ -191,6 +201,23 @@
           <button type="button" id="autofit-page" class="button full">Khớp cỡ chữ cả trang</button>
         </div>
         <ol id="boxes" class="box-list" aria-label="Khung của trang hiện tại"></ol>
+        <div id="multi-select-panel" class="multi-select-panel" hidden>
+          <p id="multi-select-count" class="muted"></p>
+          <div class="align-grid" role="group" aria-label="Căn hàng khung đã chọn">
+            <button type="button" class="button" data-align="left" title="Căn trái">⇤ Trái</button>
+            <button type="button" class="button" data-align="centerX" title="Căn giữa ngang">↔ Giữa</button>
+            <button type="button" class="button" data-align="right" title="Căn phải">⇥ Phải</button>
+            <button type="button" class="button" data-align="top" title="Căn trên">⤒ Trên</button>
+            <button type="button" class="button" data-align="centerY" title="Căn giữa dọc">↕ Giữa</button>
+            <button type="button" class="button" data-align="bottom" title="Căn dưới">⤓ Dưới</button>
+          </div>
+          <div class="form-actions box-quick-actions">
+            <button type="button" class="button" data-distribute="horizontal" title="Chia đều khoảng cách ngang (≥ 3 khung)">Chia ngang</button>
+            <button type="button" class="button" data-distribute="vertical" title="Chia đều khoảng cách dọc (≥ 3 khung)">Chia dọc</button>
+            <button type="button" id="multi-autofit" class="button">Khớp cỡ chọn</button>
+            <button type="button" id="multi-delete" class="button danger">Xóa đã chọn</button>
+          </div>
+        </div>
         <p id="inspector-empty" class="muted">Chọn một khung trên ảnh để chỉnh thoại và kiểu chữ.</p>
         <form id="box-form" hidden>
           <div class="form-actions box-quick-actions">
@@ -232,6 +259,10 @@
           <div class="two-fields">
             <label class="field" for="box-stroke-width">Viền chữ (px)<input id="box-stroke-width" type="number" min="0" max="24" step="0.5" value="0" required></label>
             <label class="field" for="box-stroke-color">Màu viền<input id="box-stroke-color" type="color" value="#ffffff"></label>
+          </div>
+          <div class="two-fields">
+            <label class="field" for="box-shadow-blur">Đổ bóng (px)<input id="box-shadow-blur" type="number" min="0" max="24" step="0.5" value="0" required></label>
+            <label class="field" for="box-shadow-color">Màu bóng<input id="box-shadow-color" type="color" value="#000000"></label>
           </div>
           <label class="choice"><input id="box-fill" type="checkbox"> Nền dưới thoại</label>
           <div class="two-fields">
@@ -315,6 +346,19 @@
     </section>
   </main>
 
+  <dialog id="project-library">
+    <h2>Dự án gần đây và phục hồi</h2>
+    <p id="project-library-empty" class="muted">Chưa có dự án đã lưu.</p>
+    <button type="button" class="button" id="legacy-recovery" hidden>Khôi phục phiên tự lưu cũ</button>
+    <div id="recent-projects"></div>
+    <form method="dialog"><button class="button">Đóng</button></form>
+  </dialog>
+  <dialog id="ocr-review">
+    <h2>Kiểm tra kết quả OCR</h2>
+    <p id="ocr-review-summary" class="muted"></p>
+    <div id="ocr-review-lines"></div>
+    <div class="form-actions"><button id="cancel-ocr" class="button" type="button">Hủy</button><button id="apply-ocr" class="button primary" type="button">Đặt lên trang</button></div>
+  </dialog>
   <dialog id="ocr-preview">
     <h2>Ảnh tiền xử lý OCR</h2>
     <canvas id="ocr-preview-canvas"></canvas>
@@ -360,6 +404,8 @@
       <div><dt>Giữ Space + Kéo / Chuột giữa</dt><dd>Kéo bàn vẽ (Pan)</dd></div>
       <div><dt>Phím \</dt><dd>Bật/tắt so sánh với ảnh gốc</dd></div>
       <div><dt>Shift + Kéo tay cầm xoay</dt><dd>Xoay khung theo nấc 15°</dd></div>
+      <div><dt>Shift + Bấm khung</dt><dd>Chọn nhiều khung để kéo / căn hàng</dd></div>
+      <div><dt>Alt + Kéo khung</dt><dd>Tạm tắt hút lưới căn thẳng hàng</dd></div>
       <div><dt>Alt + Bấm (Cọ sao chép)</dt><dd>Chọn điểm nguồn sao chép nền</dd></div>
       <div><dt>Mũi tên (khi chọn khung)</dt><dd>Dịch khung 1 px (giữ Shift: 10 px)</dd></div>
       <div><dt>Delete / Backspace</dt><dd>Xóa khung đang chọn</dd></div>

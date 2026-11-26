@@ -1,5 +1,5 @@
 import { psdFontName } from "./fonts.js"
-import { nativeCapabilities } from "./native.js"
+import { nativeCapabilities, runNativeTask } from "./native.js"
 import { paintRedraw, redrawLayout } from "./redraw.js"
 import { paintRetouchStrokes } from "./retouch.js"
 import { fitBoxFontSize } from "./tools.js"
@@ -155,11 +155,18 @@ function drawBox(canvas, box, {
   if (background && box.fill) drawFillShape(context, g, box)
   if (text) {
     const strokeWidth = Math.max(0, box.strokeWidth ?? 0)
+    const shadowBlur = Math.max(0, box.shadowBlur ?? 0)
     if (strokeWidth > 0) {
       context.strokeStyle = box.strokeColor || "#ffffff"
       context.lineWidth = strokeWidth * 2
       context.lineJoin = "round"
       context.miterLimit = 2
+    }
+    if (shadowBlur > 0) {
+      context.shadowColor = box.shadowColor || "#000000"
+      context.shadowBlur = shadowBlur
+      context.shadowOffsetX = 0
+      context.shadowOffsetY = 0
     }
     context.fillStyle = box.color
     context.textBaseline = "middle"
@@ -215,10 +222,16 @@ export function drawPage(canvas, page, options) {
   return redraw.pending
 }
 
+function hexToRgb(hex) {
+  const [r, g, b] = (hex || "#000000").slice(1).match(/../g).map((value) => parseInt(value, 16))
+  return { r, g, b }
+}
+
 function croppedLayer({ width, height }, box, options) {
   const angle = box.rotation * Math.PI / 180
-  const halfWidth = (Math.abs(Math.cos(angle)) * box.w * width + Math.abs(Math.sin(angle)) * box.h * height) / 2
-  const halfHeight = (Math.abs(Math.sin(angle)) * box.w * width + Math.abs(Math.cos(angle)) * box.h * height) / 2
+  const pad = Math.ceil((box.strokeWidth ?? 0) + (box.shadowBlur ?? 0) * 1.5)
+  const halfWidth = (Math.abs(Math.cos(angle)) * box.w * width + Math.abs(Math.sin(angle)) * box.h * height) / 2 + pad
+  const halfHeight = (Math.abs(Math.sin(angle)) * box.w * width + Math.abs(Math.cos(angle)) * box.h * height) / 2 + pad
   const cx = (box.x + box.w / 2) * width
   const cy = (box.y + box.h / 2) * height
   const left = Math.max(0, Math.floor(cx - halfWidth))
@@ -230,28 +243,54 @@ function croppedLayer({ width, height }, box, options) {
   return { canvas: crop, left, top }
 }
 
-function psdTextLayer(canvas, box) {
+export function psdTextLayer(canvas, box) {
   const g = geometry(canvas.getContext("2d"), box, canvas.width, canvas.height)
   const cos = Math.cos(g.angle)
   const sin = Math.sin(g.angle)
-  const baseline = g.offsetY + box.size * 0.34
-  const rgb = box.color.slice(1).match(/../g).map((value) => parseInt(value, 16))
+  const localX = g.vertical ? (g.columns.length - 1) * g.columnStep / 2 : g.offsetX
+  const localY = g.vertical ? -g.h / 2 + g.padding : g.offsetY + box.size * 0.34
+  const effects = {}
+  const strokeWidth = Math.max(0, box.strokeWidth ?? 0)
+  if (strokeWidth > 0) {
+    effects.stroke = [{
+      enabled: true,
+      present: true,
+      size: { units: "Pixels", value: strokeWidth },
+      position: "outside",
+      fillType: "color",
+      color: hexToRgb(box.strokeColor || "#ffffff"),
+      opacity: 1,
+    }]
+  }
+  const shadowBlur = Math.max(0, box.shadowBlur ?? 0)
+  if (shadowBlur > 0) {
+    effects.dropShadow = [{
+      enabled: true,
+      present: true,
+      size: { units: "Pixels", value: shadowBlur },
+      distance: { units: "Pixels", value: 0 },
+      angle: 90,
+      color: hexToRgb(box.shadowColor || "#000000"),
+      opacity: 1,
+    }]
+  }
   return {
     name: box.text.split(/\r?\n/)[0].slice(0, 72),
     text: {
-      text: g.lines.join("\n"),
+      text: g.vertical ? g.columns.map((column) => column.join("")).join("\n") : g.lines.join("\n"),
       ...(box.vertical && { orientation: "vertical" }),
-      transform: [cos, sin, -sin, cos, g.cx + g.offsetX * cos - baseline * sin, g.cy + g.offsetX * sin + baseline * cos],
+      transform: [cos, sin, -sin, cos, g.cx + localX * cos - localY * sin, g.cy + localX * sin + localY * cos],
       style: {
         font: { name: psdFontName(box.font) },
         fontSize: box.size,
         leading: g.lineHeight,
         fauxBold: Boolean(box.bold),
         fauxItalic: Boolean(box.italic),
-        fillColor: { r: rgb[0], g: rgb[1], b: rgb[2] },
+        fillColor: hexToRgb(box.color),
       },
       paragraphStyle: { justification: box.align },
     },
+    ...(Object.keys(effects).length && { effects }),
   }
 }
 
@@ -290,7 +329,7 @@ export async function exportPage(page, format) {
   if (format === "png" && globalThis.khungThoaiDesktop?.native) {
     if (await nativeCapabilities()) {
       const { options, data } = await nativePageLayers(page)
-      const response = await globalThis.khungThoaiDesktop.native("png", options, data)
+      const response = await runNativeTask("png", options, data)
       return new Blob([response.data], { type: "image/png" })
     }
   }

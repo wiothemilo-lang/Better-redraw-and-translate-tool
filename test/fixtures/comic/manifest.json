@@ -1,0 +1,93 @@
+{
+  "width": 512,
+  "height": 768,
+  "provenance": "Original clean comic art generated with OpenAI ImageGen for this repository. Lettering was added deterministically with Canvas. No third-party manga panels.",
+  "cases": [
+    {
+      "id": "white-balloon",
+      "rect": {
+        "left": 50,
+        "top": 85,
+        "right": 185,
+        "bottom": 200
+      },
+      "text": [
+        "HELLO",
+        "WORLD"
+      ],
+      "x": 72,
+      "y": 125,
+      "size": 20,
+      "maxMae": 8
+    },
+    {
+      "id": "caption",
+      "rect": {
+        "left": 308,
+        "top": 695,
+        "right": 480,
+        "bottom": 742
+      },
+      "text": [
+        "THE GARDEN"
+      ],
+      "x": 315,
+      "y": 724,
+      "size": 19,
+      "maxMae": 8,
+      "margin": 4
+    },
+    {
+      "id": "irregular-jacket",
+      "rect": {
+        "left": 310,
+        "top": 460,
+        "right": 405,
+        "bottom": 535
+      },
+      "text": [
+        "LEAF"
+      ],
+      "x": 320,
+      "y": 500,
+      "size": 22,
+      "conservative": true
+    },
+    {
+      "id": "colored-glass",
+      "rect": {
+        "left": 250,
+        "top": 85,
+        "right": 370,
+        "bottom": 170
+      },
+      "text": [
+        "SUN"
+      ],
+      "x": 265,
+      "y": 135,
+      "size": 24,
+      "conservative": true
+    }
+  ],
+  "ocr": [
+    {
+      "id": "english",
+      "width": 600,
+      "height": 220,
+      "language": "eng",
+      "text": "HELLO WORLD",
+      "psm": 6,
+      "maxCer": 0.15
+    },
+    {
+      "id": "vertical",
+      "width": 180,
+      "height": 360,
+      "language": "jpn_vert",
+      "text": "こんにちは",
+      "psm": 5,
+      "maxCer": 0.5
+    }
+  ]
+}

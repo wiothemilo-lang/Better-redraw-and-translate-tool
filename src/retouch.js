@@ -49,13 +49,22 @@ function drawStrokePath(context, points, width, height, left = 0, top = 0) {
   context.stroke()
 }
 
-export function paintRetouchStrokes(canvas, page) {
+const retouchCache = new WeakMap()
+
+function retouchSignature(strokes, width, height) {
+  let parts = `${width}x${height}:${strokes.length}`
+  for (const s of strokes) {
+    const pts = s.points ?? []
+    const first = pts[0]
+    const last = pts[pts.length - 1]
+    parts += `|${s.mode},${s.size},${s.color ?? ""},${s.offsetX ?? ""},${s.offsetY ?? ""},${s.opacity ?? 1},${pts.length},${first?.x ?? ""},${first?.y ?? ""},${last?.x ?? ""},${last?.y ?? ""}`
+  }
+  return parts
+}
+
+function renderRetouchStrokes(context, page, width, height) {
   const strokes = page.retouchStrokes
-  if (!strokes?.length) return false
-  const width = canvas.width
-  const height = canvas.height
   const minDimension = Math.min(width, height)
-  const context = canvas.getContext("2d")
   let painted = false
 
   for (const stroke of strokes) {
@@ -114,4 +123,26 @@ export function paintRetouchStrokes(canvas, page) {
     }
   }
   return painted
+}
+
+export function paintRetouchStrokes(canvas, page) {
+  const strokes = page.retouchStrokes
+  if (!strokes?.length) return false
+  const width = canvas.width
+  const height = canvas.height
+  if (typeof document !== "undefined" && page.image && typeof page.image === "object") {
+    const signature = retouchSignature(strokes, width, height)
+    let entry = retouchCache.get(page.image)
+    if (!entry || entry.signature !== signature) {
+      const layer = document.createElement("canvas")
+      layer.width = width
+      layer.height = height
+      const painted = renderRetouchStrokes(layer.getContext("2d"), page, width, height)
+      entry = { signature, layer, painted }
+      retouchCache.set(page.image, entry)
+    }
+    if (entry.painted) canvas.getContext("2d").drawImage(entry.layer, 0, 0)
+    return entry.painted
+  }
+  return renderRetouchStrokes(canvas.getContext("2d"), page, width, height)
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { webcrypto } from "node:crypto"
 import test from "node:test"
-import { autoFitBox, drawPage, makeBox, textOverflows } from "../src/canvas.js"
+import { autoFitBox, drawPage, makeBox, psdTextLayer, textOverflows } from "../src/canvas.js"
 import { allFonts, psdFontName, registerFontName } from "../src/fonts.js"
 
 globalThis.crypto ??= webcrypto
@@ -34,8 +34,8 @@ function installCanvasMock() {
     fillRect(...args) { ops.push(["fillRect", this.fillStyle, ...args]) },
     clearRect() {},
     drawImage() {},
-    strokeText(text) { ops.push(["strokeText", text, this.strokeStyle, this.lineWidth]) },
-    fillText(text) { ops.push(["fillText", text, this.fillStyle, this.font]) },
+    strokeText(text) { ops.push(["strokeText", text, this.strokeStyle, this.lineWidth, this.shadowBlur, this.shadowColor]) },
+    fillText(text) { ops.push(["fillText", text, this.fillStyle, this.font, this.shadowBlur, this.shadowColor]) },
     measureText(text) {
       const size = Number(/(\d+(?:\.\d+)?)px/.exec(this.font)?.[1] ?? 16)
       return { width: text.length * size * .6 }
@@ -104,4 +104,36 @@ test("fonts helper registers custom font names and maps PostScript font names sa
   assert.ok(allFonts().includes("Manga Comic!"))
   assert.equal(psdFontName("Manga Comic!"), "MangaComic")
   assert.equal(psdFontName("日本語"), "ArialMT")
+})
+
+test("drawPage renders text shadows and psdTextLayer serializes stroke and dropShadow effects for ag-psd", async (t) => {
+  const { ops, restore } = installCanvasMock()
+  t.after(restore)
+  const canvas = document.createElement("canvas")
+  canvas.width = 400
+  canvas.height = 600
+  const page = {
+    image: { naturalWidth: 400, naturalHeight: 600 },
+    boxes: [
+      {
+        ...makeBox({ image: { naturalWidth: 400, naturalHeight: 600 } }, { x: .1, y: .1, w: .4, h: .2 }, "Bóng chữ"),
+        strokeWidth: 3, strokeColor: "#ffffff", shadowBlur: 6, shadowColor: "#112233", fill: false,
+      },
+    ],
+  }
+  drawPage(canvas, page)
+  assert.ok(ops.some(([op, text, , , blur, color]) => op === "fillText" && text === "Bóng chữ" && blur === 6 && color === "#112233"))
+
+  const layer = psdTextLayer(canvas, page.boxes[0])
+  assert.equal(layer.effects.stroke[0].enabled, true)
+  assert.equal(layer.effects.stroke[0].size.value, 3)
+  assert.equal(layer.effects.stroke[0].fillType, "color")
+  assert.equal(layer.effects.dropShadow[0].enabled, true)
+  assert.equal(layer.effects.dropShadow[0].size.value, 6)
+
+  const { writePsd, readPsd } = await import("ag-psd")
+  const buffer = writePsd({ width: 400, height: 600, children: [layer] })
+  const parsed = readPsd(buffer, { skipLayerImageData: true, skipCompositeImageData: true })
+  assert.equal(parsed.children[0].effects.stroke[0].size.value, 3)
+  assert.equal(parsed.children[0].effects.dropShadow[0].size.value, 6)
 })

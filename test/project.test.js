@@ -119,7 +119,7 @@ test("invalid masks and preset styles cannot be saved", () => {
   assert.throws(() => writeProject(project), /không hợp lệ/)
 })
 
-test("version 2 persists rich typography styles, custom font names and retouch strokes", async () => {
+test("version 2 persists rich typography styles, shadow, custom font names and retouch strokes", async () => {
   const project = sampleProject()
   Object.assign(project.pages[0].boxes[0], {
     font: "Comic Neue",
@@ -130,6 +130,8 @@ test("version 2 persists rich typography styles, custom font names and retouch s
     lineHeight: 1.4,
     strokeWidth: 3,
     strokeColor: "#00ffaa",
+    shadowBlur: 6,
+    shadowColor: "#222222",
     fillColor: "#111111",
     fillShape: "ellipse",
   })
@@ -140,4 +142,12 @@ test("version 2 persists rich typography styles, custom font names and retouch s
   const opened = await readProject(writeProject(project))
   assert.deepEqual(opened.pages[0].boxes[0], project.pages[0].boxes[0])
   assert.deepEqual(opened.pages[0].retouchStrokes, project.pages[0].retouchStrokes)
+})
+
+test("portable projects retain their recovery identity while older projects can omit it", async () => {
+  const project = sampleProject()
+  project.projectId = "d26b25ce-44de-4fcb-a04a-9c63d471527a"
+  assert.equal((await readProject(writeProject(project))).projectId, project.projectId)
+  project.projectId = "../escape"
+  assert.throws(() => writeProject(project), /không hợp lệ/)
 })

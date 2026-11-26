@@ -6,8 +6,8 @@ export async function nativeCapabilities(refresh = false) {
   return capabilities
 }
 
-export async function saveDesktopProject(blob, mode, name) {
-  const transfer = await desktop.projectBegin(mode, name)
+export async function saveDesktopProject(blob, mode, name, projectId) {
+  const transfer = await desktop.projectBegin(mode, name, projectId)
   if (!transfer) return false
   try {
     for (let offset = 0; offset < blob.size; offset += 4 * 1024 * 1024) {
@@ -34,7 +34,14 @@ export async function openDesktopProject(mode) {
       chunks.push(chunk)
       length += chunk.length
     }
-    return new File(chunks, transfer.name)
+    const file = new File(chunks, transfer.name)
+    file.nativeOpenId = transfer.id
+    file.projectId = transfer.projectId
+    file.recovery = transfer.recovery
+    return file
+  } catch (error) {
+    await desktop.projectDiscardOpen(transfer.id).catch(() => {})
+    throw error
   } finally { await desktop.projectCancelRead(transfer.id) }
 }
 
@@ -48,4 +55,9 @@ export function imagePixels(image, region) {
   const context = canvas.getContext("2d")
   context.drawImage(image, -left, -top)
   return { width: canvas.width, height: canvas.height, pixels: context.getImageData(0, 0, canvas.width, canvas.height).data, left, top }
+}
+
+
+export async function runNativeTask(operation, options, data) {
+  return desktop.native(operation, options, data, crypto.randomUUID())
 }

@@ -68,7 +68,15 @@ h1, h2 { letter-spacing: -.035em; }
 .stage.panning { cursor: grab; }
 .stage.panning.dragging-pan { cursor: grabbing; }
 .stage.eyedropper { cursor: crosshair; }
+.stage.bubble { cursor: cell; }
 .outline { overflow: visible; }
+.outline.multi-selected { border: 2px solid #0284c7; background: #0284c71f; }
+.snap-guide { position: absolute; pointer-events: none; z-index: 3; }
+.snap-guide.x { top: 0; bottom: 0; width: 0; border-left: 1px dashed #0284c7; }
+.snap-guide.y { left: 0; right: 0; height: 0; border-top: 1px dashed #0284c7; }
+.multi-select-panel { margin-top: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #f6faf4; }
+.align-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 8px; }
+.align-grid .button { min-height: 28px; font-size: .74rem; padding: 3px 4px; }
 .resize-handle {
   position: absolute; width: 10px; height: 10px; border-radius: 2px;
   background: white; border: 2px solid #123e32; pointer-events: auto;
@@ -251,3 +259,14 @@ dialog::backdrop { background: #16352dae; }
 #desktop-recovery { margin-bottom: 10px; }
 #ocr-preview { width: min(800px, 94vw); }
 #ocr-preview-canvas { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; margin: 12px auto; }
+
+#project-dirty { margin-bottom: 10px; }
+#task-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+#task-list li { display: flex; gap: 10px; align-items: center; font-size: .8rem; }
+#task-list li span { flex: 1; }
+#task-list progress { width: 110px; }
+#project-library, #ocr-review { width: min(650px, 94vw); max-height: 90vh; overflow: auto; }
+#recent-projects section { padding: 12px 0; border-bottom: 1px solid var(--line); }
+#recent-projects .button { display: block; margin: 6px 0; }
+#ocr-review-lines { max-height: 60vh; overflow: auto; padding: 0 4px; }
+#ocr-review-lines canvas { display: block; max-width: 100%; margin-top: 6px; background: white; }

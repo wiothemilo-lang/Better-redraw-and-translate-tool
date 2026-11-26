@@ -139,12 +139,16 @@ internal static class NativeImaging
         }
         var low = Percentile(.01);
         var high = Math.Max(low + 1, Percentile(.99));
+        var rotation = (int?)options["rotation"] ?? 0;
+        if (rotation is not (0 or 90 or 180 or 270)) throw new InvalidDataException("Invalid OCR rotation.");
         var denoise = (bool?)options["denoise"] ?? true;
         var cleaned = new byte[width * height];
+        NativeProgress.Emit(5, "Chuẩn hóa độ tương phản");
         Span<byte> neighbors = stackalloc byte[5];
         for (var y = 0; y < height; y++)
         for (var x = 0; x < width; x++)
         {
+            if (x == 0 && y % 64 == 0) NativeProgress.Emit(5 + 65d * y / height, "Lọc nhiễu và phóng ảnh");
             var value = (int)gray[y * width + x];
             if (denoise && x > 0 && y > 0 && x < width - 1 && y < height - 1)
             {
@@ -158,9 +162,9 @@ internal static class NativeImaging
             }
             cleaned[y * width + x] = (byte)Math.Clamp((value - low) * 255 / (high - low), 0, 255);
         }
-        var outWidth = width * scale;
-        var outHeight = height * scale;
-        var output = new byte[outWidth * outHeight * 4];
+        var outputWidth = width * scale;
+        var outputHeight = height * scale;
+        var output = new byte[outputWidth * outputHeight * 4];
         if (scale == 1)
         {
             for (var i = 0; i < cleaned.Length; i++)
@@ -173,13 +177,13 @@ internal static class NativeImaging
         }
         else
         {
-            for (var oy = 0; oy < outHeight; oy++)
+            for (var oy = 0; oy < outputHeight; oy++)
             {
                 var sy = Math.Clamp((oy + .5) / scale - .5, 0, height - 1);
                 var y0 = (int)Math.Floor(sy);
                 var y1 = Math.Min(height - 1, y0 + 1);
                 var fy = sy - y0;
-                for (var ox = 0; ox < outWidth; ox++)
+                for (var ox = 0; ox < outputWidth; ox++)
                 {
                     var sx = Math.Clamp((ox + .5) / scale - .5, 0, width - 1);
                     var x0 = (int)Math.Floor(sx);
@@ -188,13 +192,27 @@ internal static class NativeImaging
                     var top = cleaned[y0 * width + x0] * (1 - fx) + cleaned[y0 * width + x1] * fx;
                     var bottom = cleaned[y1 * width + x0] * (1 - fx) + cleaned[y1 * width + x1] * fx;
                     var value = (byte)Math.Clamp(Math.Round(top * (1 - fy) + bottom * fy), 0, 255);
-                    var offset = (oy * outWidth + ox) * 4;
+                    var offset = (oy * outputWidth + ox) * 4;
                     output[offset] = output[offset + 1] = output[offset + 2] = value;
                     output[offset + 3] = 255;
                 }
             }
         }
-        return (new JsonObject { ["width"] = outWidth, ["height"] = outHeight }, output);
+        if (rotation != 0)
+        {
+            var rotated = new byte[output.Length];
+            var rotatedWidth = rotation == 180 ? outputWidth : outputHeight;
+            for (var y = 0; y < outputHeight; y++)
+            for (var x = 0; x < outputWidth; x++)
+            {
+                var rx = rotation == 90 ? outputHeight - 1 - y : rotation == 180 ? outputWidth - 1 - x : y;
+                var ry = rotation == 90 ? x : rotation == 180 ? outputHeight - 1 - y : outputWidth - 1 - x;
+                output.AsSpan((y * outputWidth + x) * 4, 4).CopyTo(rotated.AsSpan((ry * rotatedWidth + rx) * 4));
+            }
+            output = rotated;
+            if (rotation != 180) (outputWidth, outputHeight) = (outputHeight, outputWidth);
+        }
+        return (new JsonObject { ["width"] = outputWidth, ["height"] = outputHeight }, output);
 
         int Percentile(double fraction)
         {
@@ -216,6 +234,7 @@ internal static class NativeImaging
             throw new InvalidDataException("Invalid RGBA image dimensions.");
         var length = width * height * 4;
         if (data.Length < (long)length * 2) throw new InvalidDataException("Missing image layers.");
+        NativeProgress.Emit(5, "Ghép ảnh gốc");
         var output = data.AsSpan(0, length).ToArray();
         var offset = length * 2;
         foreach (var patch in options["patches"]?.AsArray() ?? [])
@@ -231,7 +250,9 @@ internal static class NativeImaging
             offset += w * h * 4;
         }
         if (offset != data.Length) throw new InvalidDataException("Unexpected export payload.");
+        NativeProgress.Emit(45, "Ghép chữ");
         for (var index = 0; index < length; index += 4) Blend(output, index, data, length + index);
+        NativeProgress.Emit(75, "Mã hóa PNG");
         return Png(output, width, height);
     }
 

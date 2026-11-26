@@ -62,6 +62,7 @@ internal sealed class ProjectStorage : IDisposable
                 item.Stream.Write(data);
                 return (new JsonObject(), []);
             }
+            case "zipAppend":
             case "zipPage":
             {
                 var item = Get(options);
@@ -71,7 +72,10 @@ internal sealed class ProjectStorage : IDisposable
                     pageCounts[(string)options["id"]!] >= 50) throw new InvalidDataException("Invalid ZIP page name.");
                 pageCounts[(string)options["id"]!]++;
                 using var entry = item.Zip.CreateEntry(name, CompressionLevel.NoCompression).Open();
-                entry.Write(NativeImaging.CompositePng(options, data));
+                var png = operation == "zipPage" ? NativeImaging.CompositePng(options, data) : data;
+                if (png.Length < 8 || !png.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }))
+                    throw new InvalidDataException("Invalid PNG page.");
+                entry.Write(png);
                 return (new JsonObject(), []);
             }
             case "fileCommit":
@@ -88,9 +92,9 @@ internal sealed class ProjectStorage : IDisposable
                     if (item.Backup && File.Exists(item.Path))
                     {
                         File.Copy(item.Path, item.Temporary + ".bak");
-                        File.Move(item.Temporary + ".bak", item.Path + ".bak", true);
+                        ReplaceCommittedFile(item.Temporary + ".bak", item.Path + ".bak");
                     }
-                    File.Move(item.Temporary, item.Path, true);
+                    ReplaceCommittedFile(item.Temporary, item.Path);
                 }
                 finally { item.Stream.Dispose(); File.Delete(item.Temporary); File.Delete(item.Temporary + ".bak"); }
                 return (new JsonObject(), []);
@@ -104,6 +108,16 @@ internal sealed class ProjectStorage : IDisposable
             }
             default: throw new InvalidDataException("Unknown native operation: " + operation);
         }
+    }
+
+    private static void ReplaceCommittedFile(string source, string destination)
+    {
+        // ReplaceFile preserves open readers on Windows. MoveFileEx overwrite can deny access
+        // even when those readers explicitly share deletion.
+        if (OperatingSystem.IsWindows() && File.Exists(destination))
+            File.Replace(source, destination, null);
+        else
+            File.Move(source, destination, true);
     }
 
     private Transfer Get(JsonObject options) => transfers.TryGetValue((string)options["id"]!, out var item)

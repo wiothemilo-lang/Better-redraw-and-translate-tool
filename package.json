@@ -13,7 +13,9 @@
     "test": "node --test",
     "desktop": "npm run build && electron .",
     "desktop:native": "node scripts/desktop-build.mjs native",
-    "desktop:package": "node scripts/desktop-build.mjs app"
+    "desktop:package": "node scripts/desktop-build.mjs app",
+    "benchmark": "node scripts/benchmark.mjs",
+    "test:desktop": "node scripts/desktop-smoke.mjs"
   },
   "dependencies": {
     "ag-psd": "^34.2.3",
@@ -22,6 +24,7 @@
   "devDependencies": {
     "@electron/packager": "^20.3.0",
     "electron": "^45.5.0",
+    "playwright": "^1.65.1",
     "vite": "^8.3.8"
   },
   "main": "desktop/main.cjs"

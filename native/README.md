@@ -41,3 +41,13 @@ Use binary payloads for images and retain structured metadata for coordinates an
 The desktop renderer snapshots the current project every 20 seconds after edits, and flushes the latest snapshot when closing an idle window. Closing during an active user operation asks the user to wait for that operation to complete. A snapshot contains the same data as the portable project and excludes the Gemini API key. The current and previous recovery snapshots appear as separate restore buttons at startup. A failed or cancelled project load leaves the current editor intact.
 
 The main window requests a renderer flush before closing. The worker shuts down at `will-quit`, after the final committed snapshot. Images and native export layers are processed page by page. PNG ZIP output is written to disk without holding the whole chapter archive in the renderer.
+
+## Task isolation and progress
+
+Long image operations run through `TaskQueue` in an isolated worker process. Each has an ID, queued/running/done/error/cancelled state, progress and stage text. The RPC stream accepts optional `event: "progress"` frames before the final reply. Receivers must handle several frames arriving in one stdout chunk.
+
+Cancelling a queued task removes it before execution. Cancelling an active task terminates that isolated process and its OCR child process tree. A separate persistent image worker handles redraw/masks, and another persistent worker owns file handles. ZIP page encoding uses the image task queue and appends the finished PNG through the file worker. A failed or cancelled page aborts the uncommitted ZIP.
+
+The renderer controllers live in `src/controllers/`. Project persistence, translation, OCR review, export preflight and task status are initialized through explicit dependencies from the editor. Pure OCR grouping and coordinate conversion are in `src/ocr.js`.
+
+Project recovery now stores up to ten committed snapshots per portable project ID in `userData/projects/<id>/`. A metadata catalog records recent saved-file paths and names. Snapshot writes use the existing atomic C# transfer API, while the main process owns catalog paths and atomic metadata updates. The legacy recovery file and its backup remain readable.
