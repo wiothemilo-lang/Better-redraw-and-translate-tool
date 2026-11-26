@@ -30,6 +30,8 @@ export function setupTranslation({
   applyTranslation,
   projectBusy,
   onSettingsChange,
+  notify,
+  notifyOverflowIfAny,
 }) {
   let translationController
 
@@ -183,6 +185,16 @@ export function setupTranslation({
       status(
         `Đã ${action} ${completed}/${pages.length} trang. ${placed} câu đã đặt và ${skipped} câu chờ đặt.`,
       )
+      if (pages.length > 1) {
+        notify?.({
+          kind: "success",
+          title: `Hoàn tất ${action} chương`,
+          message: `Đã xử lý ${completed}/${pages.length} trang (${placed} câu đã đặt, ${skipped} câu chờ đặt).`,
+          key: "batch-translate",
+        })
+      }
+      const active = selectedPage()
+      if (active && pages.includes(active)) notifyOverflowIfAny?.(active, "sau khi dịch")
     } catch (error) {
       const stopped = translationController.signal.aborted
       if (activePage)
@@ -198,6 +210,14 @@ export function setupTranslation({
           : `Đã ${action} ${completed}/${pages.length} trang. ${error.message}`,
         !stopped,
       )
+      if (!stopped && pages.length > 1) {
+        notify?.({
+          kind: "error",
+          title: `Lỗi khi ${action} chương`,
+          message: `Hoàn tất ${completed}/${pages.length} trang. ${error.message}`,
+          key: "batch-translate",
+        })
+      }
     } finally {
       state.translating = false
       translationController = null
@@ -254,6 +274,7 @@ export function setupTranslation({
       }
       page.translationJob = { kind: "translate", signature, state: "done" }
       status(`Đã dịch ${updated}/${page.boxes.length} khung chữ trên trang.`)
+      notifyOverflowIfAny?.(page, "sau khi dịch khung chữ")
     } catch (error) {
       const stopped = translationController.signal.aborted
       page.translationJob = {

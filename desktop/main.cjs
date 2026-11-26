@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, net, protocol, session, dialog } = require("electron")
+const { app, BrowserWindow, ipcMain, net, protocol, session, dialog, shell } = require("electron")
 const path = require("node:path")
 const { pathToFileURL } = require("node:url")
 const { NativeWorker } = require("./native-worker.cjs")
 const { TaskQueue } = require("./task-queue.cjs")
 const { ProjectFiles } = require("./project-files.cjs")
-const { webSearch, fetchUrl } = require("./web-search.cjs")
+const { webSearch, fetchUrl, isSafePublicHttpsUrl } = require("./web-search.cjs")
+const { checkForUpdates } = require("./updater.cjs")
 
 const origin = "app://khung-thoai"
 const entry = origin + "/index.html"
@@ -118,6 +119,19 @@ app.whenReady().then(() => {
   handle("khung-thoai:project-write", (id, operation, options, data) => projects.write(id, operation, options, data))
   handle("khung-thoai:web-search", (query, options) => webSearch(query, options))
   handle("khung-thoai:fetch-url", (url, options) => fetchUrl(url, options))
+  handle("khung-thoai:app-info", () => ({
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    isPackaged: app.isPackaged,
+  }))
+  handle("khung-thoai:check-update", () => checkForUpdates(app.getVersion()))
+  handle("khung-thoai:open-external", async (url) => {
+    const safe = isSafePublicHttpsUrl(url)
+    if (!safe) throw new Error("Chỉ cho phép mở liên kết HTTPS công khai.")
+    await shell.openExternal(safe.toString())
+    return true
+  })
 
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   session.defaultSession.setPermissionCheckHandler(() => false)

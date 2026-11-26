@@ -1,4 +1,4 @@
-import { autoFitBox, clamp, drawPage, makeBox } from "./canvas.js"
+import { autoFitBox, clamp, drawPage, makeBox, textOverflows } from "./canvas.js"
 import { groupDialogue, isImageFile, readDialogueFile } from "./io.js"
 import { setupLibrary } from "./library.js"
 import { matchDialogue, toCoordinates, toRectangle } from "./placement.js"
@@ -9,6 +9,15 @@ import { cleanupRectangle, paintCleanupMask } from "./cleanup.js"
 import { remainingTranslations, translationLabel } from "./translation.js"
 import { allFonts, loadCustomFont, registerFontName, restoreCustomFonts } from "./fonts.js"
 import { alignBoxes, distributeBoxes, duplicateBox, nudgeBox, reorderBox } from "./tools.js"
+import { createNotificationCenter } from "./notifications.js"
+import {
+  APP_VERSION,
+  RELEASES_PAGE_URL,
+  checkAppUpdate,
+  dismissUpdateVersion,
+  formatBytes,
+  openExternalUrl,
+} from "./updater.js"
 
 import { setupTasks } from "./controllers/tasks.js"
 import { setupProjects } from "./controllers/project.js"
@@ -822,6 +831,7 @@ byId("apply-script").onclick = () => {
   state.queue.push(...unplaced)
   render()
   status(`Đã đặt ${placed} câu. ${unplaced.length} câu chờ đặt thủ công.`)
+  notifyOverflowIfAny(current, "sau khi dàn kịch bản")
 }
 
 function addBox(rectangle, line, record = true) {
@@ -1116,9 +1126,181 @@ window.addEventListener("blur", () => {
   if (gestures.getSpaceHeld()) gestures.setSpaceHeld(false)
 })
 
+const notifications = createNotificationCenter({ byId })
+const notify = (options) => notifications.notify(options)
+
+function notifyOverflowIfAny(page, sourceLabel = "") {
+  if (!page?.boxes?.length) return
+  let overflowCount = 0
+  for (const box of page.boxes) {
+    try {
+      if (textOverflows(page, box)) overflowCount++
+    } catch {
+      // Ignore canvas measurement errors.
+    }
+  }
+  if (!overflowCount) return
+  notify({
+    kind: "warning",
+    title: `Có ${overflowCount} khung bị tràn chữ`,
+    message: `Trang ${page.name}${sourceLabel ? ` (${sourceLabel})` : ""} có ${overflowCount}/${page.boxes.length} khung chữ vượt quá kích thước khung.`,
+    key: `overflow-${page.id}`,
+    actions: [
+      {
+        label: "Khớp cỡ cả trang",
+        primary: true,
+        onClick: () => {
+          if (selectedPage() !== page) selectPage(page)
+          byId("autofit-page")?.click()
+        },
+      },
+    ],
+  })
+}
+
+const updateDialog = byId("update-dialog")
+let activeUpdateResult = null
+function showUpdateDialog(result) {
+  if (!updateDialog || !result) return
+  activeUpdateResult = result
+  const release = result.release ?? {}
+  byId("update-dialog-title").textContent = result.hasUpdate
+    ? `Có bản cập nhật mới v${result.latestVersion}`
+    : "Khung Thoại đã ở phiên bản mới nhất"
+  const dateText = release.publishedAt
+    ? " · phát hành " + new Date(release.publishedAt).toLocaleDateString("vi-VN")
+    : ""
+  byId("update-version-row").textContent = result.hasUpdate
+    ? `Hiện tại: v${result.currentVersion} → Mới nhất: v${result.latestVersion}${dateText}`
+    : `Phiên bản hiện tại: v${result.currentVersion} (mới nhất${dateText})`
+  byId("update-notes").textContent = release.notes
+    || (result.hasUpdate
+      ? "Mở trang GitHub Releases để tải bản mới nhất và xem đầy đủ thay đổi."
+      : "Bạn đang dùng phiên bản mới nhất của Khung Thoại.")
+
+  const assetsEl = byId("update-assets")
+  const assets = Array.isArray(release.assets) ? release.assets : []
+  assetsEl.hidden = !result.hasUpdate || !assets.length
+  if (!assetsEl.hidden) {
+    assetsEl.replaceChildren(
+      ...assets.map((asset) => {
+        const btn = document.createElement("button")
+        btn.type = "button"
+        btn.className = "button"
+        const nameSpan = document.createElement("span")
+        nameSpan.textContent = "↓ " + asset.name
+        const sizeSpan = document.createElement("span")
+        sizeSpan.className = "muted"
+        sizeSpan.textContent = formatBytes(asset.size)
+        btn.append(nameSpan, sizeSpan)
+        btn.onclick = () => {
+          openExternalUrl(asset.downloadUrl).catch(() => {})
+        }
+        return btn
+      }),
+    )
+  }
+  byId("update-dismiss-version").hidden = !result.hasUpdate
+  updateDialog.showModal()
+}
+
+byId("update-open-release").onclick = () => {
+  const url = activeUpdateResult?.release?.url || RELEASES_PAGE_URL
+  openExternalUrl(url).catch(() => {})
+}
+byId("update-dismiss-version").onclick = () => {
+  if (activeUpdateResult?.latestVersion) {
+    dismissUpdateVersion(activeUpdateResult.latestVersion)
+    status(`Đã bỏ qua nhắc cập nhật cho bản v${activeUpdateResult.latestVersion}.`)
+  }
+  updateDialog.close()
+}
+byId("update-close").onclick = () => updateDialog.close()
+
+let checkingUpdate = false
+async function runUpdateCheck({ force = false } = {}) {
+  if (checkingUpdate) return
+  checkingUpdate = true
+  const checkBtn = byId("check-update")
+  if (force && checkBtn) checkBtn.disabled = true
+  if (force) status("Đang kiểm tra bản cập nhật mới…")
+  try {
+    const result = await checkAppUpdate({ force, currentVersion: APP_VERSION })
+    if (result.skipped) return
+    if (!result.ok) {
+      if (force) {
+        status(result.error || "Không thể kiểm tra cập nhật.", true)
+        notify({
+          kind: "warning",
+          title: "Không kiểm tra được cập nhật",
+          message: result.error || "Hãy kiểm tra kết nối mạng hoặc thử lại sau.",
+          key: "app-update",
+        })
+      }
+      return
+    }
+    if (result.hasUpdate && (!result.dismissed || force)) {
+      if (force) status(`Có bản cập nhật mới v${result.latestVersion}.`)
+      notify({
+        kind: "update",
+        title: `Có phiên bản mới v${result.latestVersion}`,
+        message: `Bạn đang dùng v${result.currentVersion}. Bấm để xem ghi chú phát hành và tải về.`,
+        key: "app-update",
+        actions: [
+          { label: "Xem bản phát hành", primary: true, onClick: () => showUpdateDialog(result) },
+          {
+            label: "Bỏ qua bản này",
+            onClick: () => {
+              dismissUpdateVersion(result.latestVersion)
+              status(`Đã bỏ qua nhắc cập nhật v${result.latestVersion}.`)
+            },
+          },
+        ],
+      })
+      if (force) showUpdateDialog(result)
+    } else if (force) {
+      status(`Khung Thoại v${result.currentVersion} là phiên bản mới nhất.`)
+      notify({
+        kind: "success",
+        title: "Đã cập nhật mới nhất",
+        message: `Khung Thoại v${result.currentVersion} hiện là phiên bản mới nhất.`,
+        key: "app-update",
+      })
+    }
+  } catch {
+    // Keep silent on unexpected startup check errors.
+  } finally {
+    checkingUpdate = false
+    if (force && checkBtn) checkBtn.disabled = false
+  }
+}
+
+byId("check-update").onclick = () => runUpdateCheck({ force: true })
+byId("notifications-check-update").onclick = () => {
+  notifications.closePanel()
+  runUpdateCheck({ force: true })
+}
+
+window.addEventListener("offline", () => {
+  notify({
+    kind: "warning",
+    title: "Đã mất kết nối mạng",
+    message: "OCR cục bộ, cọ Inpaint C# và Ollama cục bộ vẫn hoạt động bình thường; Gemini API và Web Search tạm ngưng.",
+    key: "network-state",
+  })
+})
+window.addEventListener("online", () => {
+  notify({
+    kind: "success",
+    title: "Đã kết nối lại mạng",
+    message: "Gemini API, Web Search và kiểm tra cập nhật đã sẵn sàng trở lại.",
+    key: "network-state",
+  })
+})
+
 const shared = {
   state, byId, status, checkpoint, renderPages, renderInspector, renderCanvas, render,
-  selectedPage, selectedBox, projectBusy,
+  selectedPage, selectedBox, projectBusy, notify, notifyOverflowIfAny,
 }
 const gestures = setupGestures({
   ...shared, stage, overlays, pageCanvas, viewport, editorSnapshot,
@@ -1157,10 +1339,12 @@ setupExports({
 chat = setupChat({
   ...shared,
   selectedIndex,
+  selectPage,
   commitLiveForm: commitLiveFormCheckpoint,
   readTranslationSettings: translation.settings,
   registerFontName,
   renderFontOptions,
+  restoreHistory,
 })
 
 restoreCustomFonts().then((restored) => {
@@ -1168,5 +1352,9 @@ restoreCustomFonts().then((restored) => {
   renderFontOptions()
   if (selectedPage()) render()
 })
+
+setTimeout(() => {
+  runUpdateCheck({ force: false })
+}, 4000)
 
 render()

@@ -1,4 +1,5 @@
 import { runAgentTurn } from "../agent-harness.js"
+import { compactChatHistory } from "../agent-context.js"
 import { createAgentTools } from "../agent-tools.js"
 
 const searchStorageKey = "khung-thoai-search-config"
@@ -38,11 +39,14 @@ export function setupChat({
   render,
   selectedPage,
   selectedIndex,
+  selectPage,
   projectBusy,
   commitLiveForm,
   readTranslationSettings,
   registerFontName,
   renderFontOptions,
+  notify,
+  restoreHistory,
 }) {
   const panel = byId("chat-panel")
   const toggleBtn = byId("open-chat")
@@ -52,12 +56,21 @@ export function setupChat({
   const sendBtn = byId("chat-send")
   const stopBtn = byId("chat-stop")
   const statusEl = byId("chat-status")
+  const statsEl = byId("chat-stats")
+  const todoBar = byId("chat-todo-bar")
+  const todoCount = byId("chat-todo-count")
+  const todoList = byId("chat-todo-list")
+  const planModeInput = byId("chat-plan-mode")
+  const allowEditsInput = byId("chat-allow-edits")
+  const allowWebInput = byId("chat-allow-web")
+  const compactBtn = byId("chat-compact")
   const providerSelect = byId("chat-search-provider")
   const searchUrlInput = byId("chat-search-url")
   const searchKeyInput = byId("chat-search-key")
 
   let chatHistory = []
   let activeController = null
+  let activeTurnEl = null
 
   function loadSearchConfig() {
     try {
@@ -124,17 +137,85 @@ export function setupChat({
   }
   refreshModelBadge()
 
+  function renderTodos(todos) {
+    if (!todoBar || !todoList || !todoCount) return
+    if (!Array.isArray(todos) || !todos.length) {
+      todoBar.hidden = true
+      todoList.replaceChildren()
+      return
+    }
+    const done = todos.filter((t) => t.status === "completed").length
+    todoCount.textContent = `${done}/${todos.length}`
+    todoList.replaceChildren(
+      ...todos.map((item) => {
+        const li = document.createElement("li")
+        li.className = "chat-todo-item"
+        li.dataset.status = item.status
+        const marker = document.createElement("span")
+        marker.setAttribute("aria-hidden", "true")
+        marker.textContent = item.status === "completed" ? "✓" : item.status === "in_progress" ? "●" : "○"
+        const text = document.createElement("span")
+        text.textContent = item.content
+        li.append(marker, text)
+        return li
+      }),
+    )
+    todoBar.hidden = false
+  }
+
+  function renderPlanCard(plan, container) {
+    if (!plan || !container) return
+    const card = document.createElement("div")
+    card.className = "chat-plan-card"
+
+    const head = document.createElement("div")
+    head.className = "chat-plan-head"
+    const title = document.createElement("strong")
+    title.textContent = `Kế hoạch: ${plan.title}`
+    const badge = document.createElement("span")
+    badge.className = "chat-badge"
+    badge.textContent = "Chờ duyệt"
+    head.append(title, badge)
+
+    const pre = document.createElement("pre")
+    pre.className = "chat-plan-body"
+    pre.textContent = plan.markdown
+
+    const actions = document.createElement("div")
+    actions.className = "form-actions"
+    const execBtn = document.createElement("button")
+    execBtn.type = "button"
+    execBtn.className = "button primary"
+    execBtn.textContent = "Thực thi kế hoạch"
+    execBtn.onclick = () => {
+      if (activeController) return
+      if (planModeInput) planModeInput.checked = false
+      if (allowEditsInput) allowEditsInput.checked = true
+      badge.textContent = "Đang thực thi"
+      execBtn.disabled = true
+      sendPrompt("Kế hoạch đã được duyệt. Hãy chuyển sang thực thi từng bước theo kế hoạch trên, cập nhật tiến độ bằng todo_write và báo kết quả sau khi hoàn tất.")
+    }
+    actions.append(execBtn)
+
+    card.append(head, pre, actions)
+    container.append(card)
+    scrollToBottom()
+  }
+
   const tools = createAgentTools({
     state,
     byId,
     selectedPage,
     selectedIndex,
+    selectPage,
     checkpoint,
     render,
     commitLiveForm,
     readTranslationSettings,
     registerFontName,
     renderFontOptions,
+    onTodosChange: renderTodos,
+    onPlanSubmit: (plan) => renderPlanCard(plan, activeTurnEl),
     searchConfig: readSearchConfig,
   })
 
@@ -144,10 +225,15 @@ export function setupChat({
 
   function renderWelcome() {
     messagesEl.replaceChildren()
+    renderTodos([])
+    if (statsEl) {
+      statsEl.hidden = true
+      statsEl.textContent = ""
+    }
     const intro = document.createElement("div")
     intro.className = "chat-msg system"
     intro.textContent =
-      "Trợ lý AI Harness dùng chung cấu hình Gemini hoặc Local/OpenAI LLM ở cột trái. AI có thể tra cứu web (Wikipedia, Jisho, DuckDuckGo/Tavily/SearXNG), đọc khung thoại, kiểm tra tràn chữ, cập nhật Bảng thuật ngữ và sửa khung thoại trực tiếp (mọi chỉnh sửa đều có thể Hoàn tác bằng Ctrl+Z)."
+      "Trợ lý AI Harness v2 có sẵn ngữ cảnh trực tiếp của trang/dự án, quy chuẩn biên tập truyện tranh, danh sách tiến độ (todo), Chế độ Kế hoạch (Plan Mode), tự nén ngữ cảnh công cụ cũ và bộ công cụ Web Search + Rà xuất + Chỉnh sửa khung/thuật ngữ (mọi chỉnh sửa đều Hoàn tác được bằng Ctrl+Z)."
     messagesEl.append(intro)
   }
   renderWelcome()
@@ -166,8 +252,28 @@ export function setupChat({
   byId("chat-clear").onclick = () => {
     if (activeController) return
     chatHistory = []
+    tools.resetTurnState?.()
     statusEl.textContent = ""
     renderWelcome()
+  }
+
+  if (compactBtn) {
+    compactBtn.onclick = () => {
+      if (activeController) return
+      const res = compactChatHistory(chatHistory, { force: true })
+      if (!res.compacted) {
+        statusEl.textContent = "Lịch sử chat còn ngắn, chưa cần nén."
+        return
+      }
+      chatHistory = res.history
+      statusEl.textContent = `Đã nén ${res.foldedMessages} tin nhắn cũ (tiết kiệm ~${res.charsSaved} ký tự).`
+      notify?.({
+        kind: "info",
+        title: "Đã nén ngữ cảnh Trợ lý AI",
+        message: `Đã gộp ${res.foldedMessages} tin nhắn cũ vào mốc tóm tắt, tiết kiệm ~${res.charsSaved} ký tự.`,
+        key: "chat-compact",
+      })
+    }
   }
 
   function createToolTraceCard(event) {
@@ -214,14 +320,16 @@ export function setupChat({
     const turnEl = document.createElement("div")
     turnEl.className = "chat-turn"
     messagesEl.append(turnEl)
+    activeTurnEl = turnEl
     scrollToBottom()
 
     const traceCards = new Map()
+    const planMode = Boolean(planModeInput?.checked)
     activeController = new AbortController()
     sendBtn.disabled = true
     input.disabled = true
     stopBtn.hidden = false
-    statusEl.textContent = "Đang suy nghĩ…"
+    statusEl.textContent = planMode ? "Đang khảo sát & lập kế hoạch…" : "Đang suy nghĩ…"
 
     try {
       const result = await runAgentTurn({
@@ -229,13 +337,18 @@ export function setupChat({
         userMessage: trimmed,
         settings: readAgentSettings(),
         tools,
-        allowEdits: byId("chat-allow-edits").checked,
-        allowWebSearch: byId("chat-allow-web").checked,
-        maxSteps: 8,
+        allowEdits: allowEditsInput.checked,
+        allowWebSearch: allowWebInput.checked,
+        planMode,
+        maxSteps: 10,
         signal: activeController.signal,
         onEvent(event) {
           if (event.type === "step") {
             statusEl.textContent = `Bước ${event.step}/${event.maxSteps}…`
+          } else if (event.type === "compacted") {
+            statusEl.textContent = `Đã tự nén ${event.foldedMessages} tin cũ…`
+          } else if (event.type === "pruned") {
+            statusEl.textContent = `Đang tối ưu ngữ cảnh (-${event.charsSaved} ký tự)…`
           } else if (event.type === "tool_start") {
             statusEl.textContent = `Đang gọi công cụ ${event.name}…`
             const ref = createToolTraceCard(event)
@@ -290,9 +403,27 @@ export function setupChat({
       assistantBubble.className = "chat-msg assistant"
       appendSafeTextWithLinks(assistantBubble, result.answer)
       turnEl.append(assistantBubble)
+
       statusEl.textContent = result.toolTrace.length
-        ? `Hoàn tất (${result.steps} bước · ${result.toolTrace.length} lượt gọi công cụ).`
+        ? `Hoàn tất (${result.steps} bước · ${result.toolTrace.length} công cụ).`
         : "Hoàn tất."
+      if (statsEl) {
+        const parts = [`${(result.elapsedMs / 1000).toFixed(1)}s`]
+        if (result.prunedChars > 0) parts.push(`-${result.prunedChars} kt`)
+        statsEl.textContent = parts.join(" · ")
+        statsEl.hidden = false
+      }
+      if (result.editsMade > 0) {
+        notify?.({
+          kind: "success",
+          title: "Trợ lý AI đã chỉnh sửa dự án",
+          message: `Đã thực hiện ${result.editsMade} thao tác chỉnh sửa. Bạn có thể hoàn tác bất cứ lúc nào.`,
+          key: "ai-edits",
+          actions: restoreHistory
+            ? [{ label: "Hoàn tác", onClick: () => restoreHistory("undo") }]
+            : [],
+        })
+      }
     } catch (error) {
       const stopped = activeController?.signal.aborted
       const errEl = document.createElement("div")
@@ -302,6 +433,7 @@ export function setupChat({
       statusEl.textContent = stopped ? "Đã dừng." : "Gặp lỗi."
     } finally {
       activeController = null
+      activeTurnEl = null
       sendBtn.disabled = false
       input.disabled = false
       stopBtn.hidden = true

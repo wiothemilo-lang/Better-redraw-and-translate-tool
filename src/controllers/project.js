@@ -32,6 +32,7 @@ export function setupProjects({
   commitLiveForm,
   registerFontName,
   renderFontOptions,
+  notify,
 }) {
   const projectFile = byId("project-file")
   let projectName
@@ -39,6 +40,9 @@ export function setupProjects({
   let revision = 0
   let savedRevision = 0
   let diskRevision = 0
+  let lastSaveReminderAt = 0
+  let lastSaveReminderRev = 0
+  let notifiedWebRecovery = false
   state.projectId = crypto.randomUUID()
   let autosaving = false
   function projectBlob() {
@@ -82,7 +86,14 @@ export function setupProjects({
         status("Đã tạo tệp dự án.")
       }
       diskRevision = snapshotRevision
+      lastSaveReminderRev = snapshotRevision
       refreshDirty()
+      notify?.({
+        kind: "success",
+        title: "Đã lưu dự án",
+        message: `${name}${projectExtension} đã được lưu an toàn.`,
+        key: "project-save",
+      })
     } catch (error) {
       status("Không lưu được dự án. " + error.message, true)
     } finally {
@@ -378,6 +389,17 @@ export function setupProjects({
       const time = new Date(info.savedAt).toLocaleTimeString("vi-VN")
       byId("web-autosave-status").textContent =
         `Bản tự lưu web (${info.pageCount} trang) lúc ${time}.`
+      if (!notifiedWebRecovery && !state.pages.length) {
+        notifiedWebRecovery = true
+        notify?.({
+          kind: "info",
+          title: "Có bản tự lưu phiên trước",
+          message: `Tìm thấy bản tự lưu web (${info.pageCount} trang) lúc ${time}.`,
+          key: "web-recovery",
+          silentToast: true,
+          actions: [{ label: "Khôi phục", primary: true, onClick: () => byId("recover-web")?.click() }],
+        })
+      }
     }
   }
   async function webAutosave() {
@@ -473,6 +495,27 @@ export function setupProjects({
     changed() {
       revision++
       refreshDirty()
+      const unsavedEdits = revision - diskRevision
+      const sinceLast = revision - lastSaveReminderRev
+      const now = Date.now()
+      if (
+        state.pages.length &&
+        unsavedEdits >= 15 &&
+        sinceLast >= 15 &&
+        now - lastSaveReminderAt >= 3 * 60 * 1000
+      ) {
+        lastSaveReminderAt = now
+        lastSaveReminderRev = revision
+        notify?.({
+          kind: "info",
+          title: "Nhắc lưu dự án",
+          message: `Bạn có ${unsavedEdits} thay đổi chưa lưu ra tệp ${projectExtension}.`,
+          key: "unsaved-reminder",
+          actions: [
+            { label: "Lưu dự án", primary: true, onClick: () => byId("save-project")?.click() },
+          ],
+        })
+      }
     },
     refreshDirty,
     get ready() {

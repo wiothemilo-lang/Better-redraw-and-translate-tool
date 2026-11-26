@@ -42,7 +42,7 @@ function abortedBeforeDispatchOutcome(call) {
   }
 }
 
-async function runSingleCall(call, { tools, allowEdits, allowWebSearch, signal, onEvent }) {
+async function runSingleCall(call, { tools, allowEdits, allowWebSearch, planMode = false, signal, onEvent }) {
   if (signal?.aborted) return abortedBeforeDispatchOutcome(call)
 
   let frozenArgs
@@ -74,6 +74,7 @@ async function runSingleCall(call, { tools, allowEdits, allowWebSearch, signal, 
     outcome = await tools.execute(call.name, frozenArgs, {
       allowEdits,
       allowWebSearch,
+      planMode,
       signal: execSignal,
     })
   } catch (error) {
@@ -90,6 +91,7 @@ async function runSingleCall(call, { tools, allowEdits, allowWebSearch, signal, 
     name: call.name,
     args: frozenArgs,
     ok: Boolean(outcome?.ok),
+    category: outcome?.category ?? tools.categoryOf?.(call.name),
     summary: outcome?.ok ? outcome.summary : (outcome?.error || "Lỗi không xác định"),
     data: outcome?.data,
     modelText: outcome?.modelText,
@@ -109,7 +111,7 @@ async function runSingleCall(call, { tools, allowEdits, allowWebSearch, signal, 
  */
 export async function executeToolBatch(
   calls,
-  { tools, allowEdits = true, allowWebSearch = true, maxParallel = 4, signal, onEvent } = {},
+  { tools, allowEdits = true, allowWebSearch = true, planMode = false, maxParallel = 4, signal, onEvent } = {},
 ) {
   const limit = Math.max(1, Math.min(8, Math.floor(Number(maxParallel) || 4)))
   const results = new Array(calls.length)
@@ -129,6 +131,7 @@ export async function executeToolBatch(
         tools,
         allowEdits,
         allowWebSearch,
+        planMode,
         signal,
         onEvent,
       })
@@ -157,6 +160,7 @@ export async function executeToolBatch(
           tools,
           allowEdits,
           allowWebSearch,
+          planMode,
           signal,
           onEvent,
         })

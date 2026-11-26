@@ -18,6 +18,8 @@
       <button type="button" class="button header-secondary" id="open-chat" aria-pressed="false" title="Mở Trợ lý AI Harness (Web Search &amp; công cụ biên tập)">Trợ lý AI</button>
       <button type="button" class="button header-secondary" id="open-find" title="Tìm và thay thế (Ctrl+H)">Tìm &amp; thay</button>
       <button type="button" class="button header-secondary" id="open-shortcuts" title="Phím tắt (?)">Phím tắt</button>
+      <button type="button" class="button header-secondary" id="check-update" title="Kiểm tra phiên bản mới của Khung Thoại">Cập nhật</button>
+      <button type="button" class="button header-secondary notif-btn" id="open-notifications" aria-expanded="false" aria-label="Trung tâm thông báo" title="Trung tâm thông báo">Thông báo <span id="notif-badge" class="notif-badge" hidden>0</span></button>
       <button type="button" class="button header-export" id="export-all">Xuất cả lượt</button>
     </div>
   </header>
@@ -461,10 +463,11 @@
   <aside id="chat-panel" class="chat-panel" aria-label="Trợ lý AI Harness" hidden>
     <div class="chat-header">
       <div class="chat-title-group">
-        <h2>Trợ lý AI · Harness</h2>
+        <h2>Trợ lý AI · Harness v2</h2>
         <span id="chat-model-badge" class="chat-badge">Gemini</span>
       </div>
       <div class="chat-header-actions">
+        <button type="button" id="chat-compact" class="button" title="Nén lịch sử chat để tiết kiệm ngữ cảnh">Nén</button>
         <button type="button" id="chat-clear" class="button">Mới</button>
         <button type="button" id="chat-close" class="button" aria-label="Đóng khung chat">×</button>
       </div>
@@ -473,6 +476,7 @@
       <div class="style-toggles">
         <label class="choice"><input id="chat-allow-web" type="checkbox" checked> Web Search</label>
         <label class="choice"><input id="chat-allow-edits" type="checkbox" checked> Cho phép sửa khung &amp; thuật ngữ</label>
+        <label class="choice"><input id="chat-plan-mode" type="checkbox"> Chế độ Kế hoạch (Plan)</label>
       </div>
       <details class="chat-search-config">
         <summary>Cấu hình Web Search</summary>
@@ -493,20 +497,58 @@
       <div class="chat-chips" role="group" aria-label="Gợi ý nhanh">
         <button type="button" class="button" data-chat-prompt="Đọc các khung thoại trên trang hiện tại, tra web các tên riêng hoặc thuật ngữ tiếng Nhật/nước ngoài cần xác minh rồi đề xuất bổ sung vào Bảng thuật ngữ.">Tra thuật ngữ</button>
         <button type="button" class="button" data-chat-prompt="Kiểm tra các khung đang bị tràn chữ trên trang hiện tại và tự khớp cỡ chữ giúp mình.">Khớp tràn khung</button>
+        <button type="button" class="button" data-chat-prompt="Chạy rà soát trước khi xuất toàn chương (check_export_preflight) và báo cáo từng lỗi cần xử lý theo trang.">Rà trước khi xuất</button>
         <button type="button" class="button" data-chat-prompt="Đọc lời thoại trang hiện tại cùng Bảng thuật ngữ, kiểm tra xem xưng hô và tên nhân vật có nhất quán không.">Rà xưng hô</button>
-        <button type="button" class="button" data-chat-prompt="Tóm tắt trạng thái dự án hiện tại (số trang, khung thoại, câu chưa đặt, bảng thuật ngữ).">Tổng quan</button>
+        <button type="button" class="button" data-chat-prompt="Khảo sát toàn bộ dự án, tra cứu nếu cần và lập kế hoạch biên tập chi tiết từng bước.">Lập kế hoạch</button>
       </div>
     </div>
+    <div id="chat-todo-bar" class="chat-todo-bar" hidden>
+      <div class="chat-todo-head">
+        <strong>Tiến độ công việc</strong>
+        <span id="chat-todo-count" class="muted">0/0</span>
+      </div>
+      <ol id="chat-todo-list" class="chat-todo-list"></ol>
+    </div>
     <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
-    <p id="chat-status" class="chat-status muted" role="status"></p>
+    <div class="chat-status-row">
+      <p id="chat-status" class="chat-status muted" role="status"></p>
+      <span id="chat-stats" class="chat-stats muted" hidden></span>
+    </div>
     <form id="chat-form" class="chat-composer">
-      <textarea id="chat-input" rows="2" placeholder="Hỏi AI tra web, sửa khung, cập nhật thuật ngữ… (Enter gửi, Shift+Enter xuống dòng)"></textarea>
+      <textarea id="chat-input" rows="2" placeholder="Hỏi AI tra web, rà lỗi, lập kế hoạch hoặc sửa khung… (Enter gửi, Shift+Enter xuống dòng)"></textarea>
       <div class="form-actions">
         <button type="submit" id="chat-send" class="button primary">Gửi</button>
         <button type="button" id="chat-stop" class="button danger" hidden>Dừng</button>
       </div>
     </form>
   </aside>
+
+  <aside id="notifications-panel" class="notifications-panel" aria-label="Trung tâm thông báo" hidden>
+    <div class="notifications-header">
+      <h2>Thông báo</h2>
+      <div class="chat-header-actions">
+        <button type="button" id="notifications-check-update" class="button">Kiểm tra cập nhật</button>
+        <button type="button" id="notifications-clear" class="button">Xóa hết</button>
+        <button type="button" id="notifications-close" class="button" aria-label="Đóng trung tâm thông báo">×</button>
+      </div>
+    </div>
+    <p id="notifications-empty" class="muted notifications-empty">Chưa có thông báo nào trong phiên này.</p>
+    <ol id="notifications-list" class="notifications-list"></ol>
+  </aside>
+
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-relevant="additions"></div>
+
+  <dialog id="update-dialog">
+    <h2 id="update-dialog-title">Cập nhật Khung Thoại</h2>
+    <p id="update-version-row" class="update-version-row muted"></p>
+    <pre id="update-notes" class="update-notes"></pre>
+    <div id="update-assets" class="update-assets" hidden></div>
+    <div class="form-actions">
+      <button type="button" id="update-open-release" class="button primary">Mở trang phát hành</button>
+      <button type="button" id="update-dismiss-version" class="button">Bỏ qua bản này</button>
+      <button type="button" id="update-close" class="button">Đóng</button>
+    </div>
+  </dialog>
 
   <script type="module" src="/src/main.js"></script>
 </body>

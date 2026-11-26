@@ -23,4 +23,7 @@ contextBridge.exposeInMainWorld("khungThoaiDesktop", {
   projectWrite: (id, operation, options, data) => invoke("project-write", id, operation, options, data),
   webSearch: (query, options) => invoke("web-search", query, options),
   fetchUrl: (url, options) => invoke("fetch-url", url, options),
+  appInfo: () => invoke("app-info"),
+  checkUpdate: () => invoke("check-update"),
+  openExternal: (url) => invoke("open-external", url),
 })

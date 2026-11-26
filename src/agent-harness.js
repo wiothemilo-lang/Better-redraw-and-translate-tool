@@ -1,4 +1,11 @@
 import { executeToolBatch } from "./agent-pipeline.js"
+import {
+  buildLayeredSystemPrompt,
+  buildRuntimeContextReminder,
+  compactChatHistory,
+  pruneOldToolResults,
+  retainHeadTailText,
+} from "./agent-context.js"
 import { validateEndpointUrl } from "./openai-compat.js"
 
 const geminiModelOptions = {
@@ -7,19 +14,22 @@ const geminiModelOptions = {
   "gemini-3.5-flash-lite": ["gemini-3.5-flash-lite"],
 }
 
-export function buildSystemPrompt({ allowEdits = true, allowWebSearch = true, sourceLanguage = "Japanese", targetLanguage = "Vietnamese" } = {}) {
-  return [
-    "Bạn là Trợ lý AI tích hợp theo kiến trúc Agent Harness bên trong ứng dụng biên tập & dịch truyện tranh Khung Thoại.",
-    `Ngôn ngữ dịch hiện tại của dự án: ${sourceLanguage} -> ${targetLanguage}. Trả lời ngắn gọn, rõ ràng bằng tiếng Việt.`,
-    "Quy tắc làm việc:",
-    "- Khi người dùng hỏi về trang hiện tại, khung thoại hoặc bảng thuật ngữ, hãy gọi `get_project_state` hoặc `list_boxes` để đọc dữ liệu thật thay vì đoán.",
-    allowWebSearch
-      ? "- Khi cần tra tên nhân vật, wiki manga/anime, thành ngữ, từ lóng hoặc SFX tiếng Nhật/Hàn/Trung, hãy dùng `web_search` và nếu cần đọc sâu trang kết quả thì dùng `fetch_url`, sau đó đính kèm link nguồn đã tra."
-      : "- Quyền Web Search đang tắt; không bịa đặt thông tin tra cứu web.",
-    allowEdits
-      ? "- Bạn được phép chỉnh sửa khung thoại, thay thế hàng loạt, tự khớp cỡ chữ và cập nhật Bảng thuật ngữ bằng các công cụ chỉnh sửa (mọi thay đổi đều tự tạo mốc Hoàn tác Ctrl+Z). Sau khi chỉnh sửa, báo tóm tắt ngắn các thay đổi đã làm."
-      : "- Chế độ CHỈ ĐỌC đang bật: chỉ tra cứu, phân tích và đề xuất, không gọi công cụ chỉnh sửa.",
-  ].join("\n")
+export function buildSystemPrompt({
+  allowEdits = true,
+  allowWebSearch = true,
+  planMode = false,
+  sourceLanguage = "Japanese",
+  targetLanguage = "Vietnamese",
+  direction = "rtl",
+} = {}) {
+  return buildLayeredSystemPrompt({
+    allowEdits,
+    allowWebSearch,
+    planMode,
+    sourceLanguage,
+    targetLanguage,
+    direction,
+  })
 }
 
 export function stripReasoning(raw) {
@@ -180,35 +190,65 @@ export async function runAgentTurn({
   tools,
   allowEdits = true,
   allowWebSearch = true,
-  maxSteps = 8,
+  planMode = false,
+  maxSteps = 10,
   signal,
   onEvent = () => {},
 }) {
   const promptText = String(userMessage || "").trim()
   if (!promptText) throw new Error("Hãy nhập câu hỏi hoặc yêu cầu cho Trợ lý AI.")
 
+  const turnStart = performance.now()
+  const effectiveAllowEdits = Boolean(allowEdits) && !planMode
+  const compacted = compactChatHistory(history)
+  const workingHistory = compacted.history
+  if (compacted.compacted) {
+    onEvent({
+      type: "compacted",
+      foldedMessages: compacted.foldedMessages,
+      charsSaved: compacted.charsSaved,
+    })
+  }
+
   const systemPrompt = buildSystemPrompt({
-    allowEdits,
+    allowEdits: effectiveAllowEdits,
     allowWebSearch,
+    planMode,
     sourceLanguage: settings.source,
     targetLanguage: settings.target,
+    direction: settings.direction,
   })
-  const toolDefs = tools.definitions({ allowEdits, allowWebSearch })
+  const providerLabel = settings.provider === "openai"
+    ? (settings.llmModel || "OpenAI/Local")
+    : `Gemini (${settings.model || "auto"})`
+  const runtimeReminder = buildRuntimeContextReminder({
+    snapshot: tools.getRuntimeSnapshot?.() ?? {},
+    allowEdits: effectiveAllowEdits,
+    allowWebSearch,
+    planMode,
+    providerLabel,
+  })
+  const toolDefs = tools.definitions({ allowEdits: effectiveAllowEdits, allowWebSearch, planMode })
   const isOpenAi = settings.provider === "openai"
   const toolTrace = []
   const thoughts = []
+  let totalPrunedChars = compacted.charsSaved
+  let editsMade = 0
 
   // Build provider-specific message thread from clean chat history ({ role: "user"|"assistant", text }).
-  const geminiContents = history.map((msg) => ({
+  const geminiContents = workingHistory.map((msg) => ({
     role: msg.role === "assistant" ? "model" : "user",
     parts: [{ text: msg.text }],
   }))
-  geminiContents.push({ role: "user", parts: [{ text: promptText }] })
+  geminiContents.push({
+    role: "user",
+    parts: [{ text: `${runtimeReminder}\n\n${promptText}` }],
+  })
 
   const openAiMessages = [
     { role: "system", content: systemPrompt },
-    ...history.map((msg) => ({ role: msg.role, content: msg.text })),
-    { role: "user", content: promptText },
+    ...workingHistory.map((msg) => ({ role: msg.role, content: msg.text })),
+    { role: "user", content: `${runtimeReminder}\n\n${promptText}` },
   ]
 
   let finalAnswer = ""
@@ -217,6 +257,18 @@ export async function runAgentTurn({
   for (let step = 1; step <= maxSteps; step++) {
     signal?.throwIfAborted()
     stepsUsed = step
+
+    // Replay-safe old tool-result pruning between steps (inspired by DeepSeek Harness).
+    if (step > 2) {
+      const pruned = pruneOldToolResults(isOpenAi ? openAiMessages : geminiContents, {
+        provider: isOpenAi ? "openai" : "gemini",
+      })
+      if (pruned.charsSaved > 0) {
+        totalPrunedChars += pruned.charsSaved
+        onEvent({ type: "pruned", prunedCount: pruned.prunedCount, charsSaved: pruned.charsSaved })
+      }
+    }
+
     onEvent({ type: "step", step, maxSteps })
 
     const reply = isOpenAi
@@ -249,8 +301,9 @@ export async function runAgentTurn({
 
     const settled = await executeToolBatch(reply.toolCalls, {
       tools,
-      allowEdits,
+      allowEdits: effectiveAllowEdits,
       allowWebSearch,
+      planMode,
       maxParallel: 4,
       signal,
       onEvent,
@@ -259,17 +312,27 @@ export async function runAgentTurn({
     const geminiResponses = []
     for (const entry of settled) {
       toolTrace.push(entry)
-      const modelPayload = entry.ok
+      if (entry.ok && entry.category === "write") editsMade++
+      const rawModelPayload = entry.ok
         ? (entry.modelText ?? JSON.stringify({ ok: true, summary: entry.summary, data: entry.data }))
         : JSON.stringify({ ok: false, error: entry.error, ...(entry.code && { code: entry.code }) })
+      const retained = retainHeadTailText(rawModelPayload, {
+        thresholdChars: 9000,
+        headChars: 5400,
+        tailChars: 2400,
+      })
+      if (retained.truncated) totalPrunedChars += retained.omittedChars
+
       if (isOpenAi) {
-        openAiMessages.push({ role: "tool", tool_call_id: entry.id, content: modelPayload })
+        openAiMessages.push({ role: "tool", tool_call_id: entry.id, content: retained.text })
       } else {
         geminiResponses.push({
           functionResponse: {
             name: entry.name,
             response: entry.ok
-              ? (entry.modelText ? { ok: true, content: entry.modelText } : { ok: true, summary: entry.summary, data: entry.data })
+              ? (entry.modelText || retained.truncated
+                ? { ok: true, summary: entry.summary, content: retained.text }
+                : { ok: true, summary: entry.summary, data: entry.data })
               : { ok: false, error: entry.error, ...(entry.code && { code: entry.code }) },
           },
         })
@@ -286,7 +349,7 @@ export async function runAgentTurn({
   }
 
   const updatedHistory = [
-    ...history,
+    ...workingHistory,
     { role: "user", text: promptText },
     { role: "assistant", text: finalAnswer },
   ].slice(-20)
@@ -297,5 +360,10 @@ export async function runAgentTurn({
     steps: stepsUsed,
     toolTrace,
     updatedHistory,
+    editsMade,
+    prunedChars: totalPrunedChars,
+    elapsedMs: Math.round(performance.now() - turnStart),
+    todos: tools.getTodos?.() ?? [],
+    plan: tools.getPlan?.() ?? null,
   }
 }

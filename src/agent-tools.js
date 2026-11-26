@@ -1,5 +1,6 @@
 import { autoFitBox as defaultAutoFitBox, clamp, makeBox as defaultMakeBox, textOverflows as defaultTextOverflows } from "./canvas.js"
-import { findMatches, replaceMatches } from "./tools.js"
+import { alignBoxes, distributeBoxes, findMatches, replaceMatches } from "./tools.js"
+import { translationSignature } from "./translation.js"
 import {
   EXTERNAL_WEB_CONTENT_NOTICE,
   fetchWebPage as defaultFetchWebPage,
@@ -8,6 +9,39 @@ import {
 } from "./web-search.js"
 
 const hexColor = /^#[\da-f]{6}$/i
+const TODO_STATUSES = new Set(["pending", "in_progress", "completed"])
+
+function validateTodoList(raw) {
+  if (!Array.isArray(raw)) throw new Error("Tham số todos phải là một mảng.")
+  const todos = []
+  const seen = new Set()
+  let activeCount = 0
+  for (let i = 0; i < raw.length; i++) {
+    const item = raw[i]
+    const content = String(item?.content || "").trim()
+    const status = String(item?.status || "").trim()
+    if (!content) throw new Error(`todos[${i}].content không được rỗng.`)
+    if (!TODO_STATUSES.has(status)) {
+      throw new Error(`todos[${i}].status phải thuộc pending | in_progress | completed.`)
+    }
+    if (seen.has(content)) throw new Error(`todos[${i}].content bị trùng lặp: "${content}".`)
+    seen.add(content)
+    if (status === "in_progress") activeCount++
+    todos.push({ content: content.slice(0, 160), status })
+  }
+  if (activeCount > 1) {
+    throw new Error(`Chỉ được giữ tối đa 1 mục in_progress tại một thời điểm (nhận ${activeCount}).`)
+  }
+  return todos
+}
+
+function firstMarkdownHeading(markdown) {
+  for (const line of String(markdown || "").split(/\r?\n/)) {
+    const match = /^#{1,6}\s+(.+?)\s*$/.exec(line.trim())
+    if (match) return match[1]
+  }
+  return null
+}
 
 function resolvePage(state, selectedPage, pageIndex) {
   if (Number.isInteger(pageIndex)) {
@@ -24,12 +58,15 @@ export function createAgentTools({
   byId,
   selectedPage,
   selectedIndex,
+  selectPage,
   checkpoint,
   render,
   commitLiveForm,
   readTranslationSettings,
   registerFontName,
   renderFontOptions,
+  onTodosChange,
+  onPlanSubmit,
   searchConfig = () => ({ provider: "auto", searchUrl: "", searchApiKey: "" }),
   searchWebFn = defaultSearchWeb,
   fetchWebPageFn = defaultFetchWebPage,
@@ -37,6 +74,8 @@ export function createAgentTools({
   autoFitBoxFn = defaultAutoFitBox,
   textOverflowsFn = defaultTextOverflows,
 }) {
+  let currentTodos = []
+  let currentPlan = null
   const catalog = [
     {
       name: "web_search",
@@ -477,14 +516,332 @@ export function createAgentTools({
         }
       },
     },
+    {
+      name: "todo_write",
+      category: "meta",
+      timeoutMs: 5000,
+      description:
+        "Ghi hoặc cập nhật toàn bộ danh sách việc cần làm cho tác vụ nhiều bước (bỏ qua nếu chỉ có 1-2 bước đơn giản). Giữ đúng 1 mục `in_progress` khi đang làm và đánh dấu `completed` ngay khi xong.",
+      parameters: {
+        type: "object",
+        properties: {
+          todos: {
+            type: "array",
+            description: "Toàn bộ danh sách công việc mới (thay thế danh sách trước đó).",
+            items: {
+              type: "object",
+              properties: {
+                content: { type: "string", description: "Mô tả ngắn gọn từng bước." },
+                status: {
+                  type: "string",
+                  enum: ["pending", "in_progress", "completed"],
+                  description: "pending | in_progress | completed",
+                },
+              },
+              required: ["content", "status"],
+            },
+          },
+        },
+        required: ["todos"],
+      },
+      async run(args) {
+        const todos = validateTodoList(args?.todos)
+        currentTodos = todos
+        onTodosChange?.(todos)
+        const count = (st) => todos.filter((t) => t.status === st).length
+        const counts = {
+          pending: count("pending"),
+          inProgress: count("in_progress"),
+          completed: count("completed"),
+        }
+        return {
+          summary: `Danh sách bước: ${counts.completed}/${todos.length} xong (${counts.inProgress} đang làm)`,
+          data: { todos, counts },
+          modelText: `Đã cập nhật danh sách công việc: ${counts.pending} chờ, ${counts.inProgress} đang làm, ${counts.completed} xong.`,
+        }
+      },
+    },
+    {
+      name: "submit_plan",
+      category: "plan",
+      timeoutMs: 5000,
+      description:
+        "Chỉ dùng khi Chế độ Kế hoạch (Plan Mode) đang bật. Trình bày bản kế hoạch Markdown hoàn chỉnh (bắt đầu bằng tiêu đề `# ...`) để người dùng duyệt trước khi bấm Thực thi kế hoạch.",
+      parameters: {
+        type: "object",
+        properties: {
+          plan: {
+            type: "string",
+            description: "Bản kế hoạch đầy đủ dạng Markdown, bắt đầu bằng tiêu đề `# Tên kế hoạch`.",
+          },
+        },
+        required: ["plan"],
+      },
+      async run(args) {
+        const planText = String(args?.plan || "").trim()
+        if (!/^#\s+\S/.test(planText)) {
+          throw new Error("Kế hoạch phải bắt đầu bằng tiêu đề Markdown `# ...` và không được rỗng.")
+        }
+        const title = firstMarkdownHeading(planText) || "Kế hoạch biên tập"
+        currentPlan = { title, markdown: planText, createdAt: Date.now() }
+        onPlanSubmit?.(currentPlan)
+        return {
+          summary: `Đã lập kế hoạch: ${title}`,
+          data: { title, markdown: planText },
+          modelText: `Đã gửi kế hoạch "${title}" cho người dùng duyệt. Dừng chỉnh sửa và chờ người dùng bấm "Thực thi kế hoạch" hoặc góp ý thêm.`,
+        }
+      },
+    },
+    {
+      name: "check_export_preflight",
+      category: "read",
+      isConcurrencySafe: true,
+      timeoutMs: 10000,
+      description:
+        "Chạy rà soát trước khi xuất (Preflight) trên toàn bộ chương hoặc một trang: phát hiện khung tràn chữ, câu chưa đặt, lỗi dịch và trang bị cũ so với cấu hình dịch mới.",
+      parameters: {
+        type: "object",
+        properties: {
+          pageIndex: { type: "integer", description: "Số trang (1-based). Bỏ trống để kiểm tra toàn bộ chương." },
+        },
+      },
+      async run(args) {
+        const targetPages = Number.isInteger(args?.pageIndex)
+          ? [resolvePage(state, selectedPage, args.pageIndex).page].filter(Boolean)
+          : state.pages
+        if (!targetPages.length) {
+          return { summary: "Chưa có trang nào trong dự án.", data: { totalIssues: 0, issues: [] } }
+        }
+        const currentSig = translationSignature(readTranslationSettings?.() ?? {})
+        const issues = []
+        if (!Number.isInteger(args?.pageIndex) && state.queue.length) {
+          issues.push({ type: "queue", text: `${state.queue.length} câu chưa đặt trong hàng chờ chương.` })
+        }
+        for (const page of targetPages) {
+          const pIndex = state.pages.indexOf(page) + 1
+          if (page.unplaced?.length) {
+            issues.push({ type: "unplaced", pageIndex: pIndex, pageName: page.name, count: page.unplaced.length })
+          }
+          if (page.translationJob?.state === "error") {
+            issues.push({ type: "translation_error", pageIndex: pIndex, pageName: page.name, error: page.translationJob.error })
+          }
+          if (page.translationJob?.state === "pending") {
+            issues.push({ type: "translation_pending", pageIndex: pIndex, pageName: page.name })
+          }
+          if (page.translationJob?.state === "done" && page.translationJob.signature !== currentSig) {
+            issues.push({ type: "translation_stale", pageIndex: pIndex, pageName: page.name })
+          }
+          for (const box of page.boxes) {
+            let overflow = false
+            try {
+              overflow = Boolean(textOverflowsFn(page, box))
+            } catch {
+              overflow = false
+            }
+            if (overflow) {
+              issues.push({
+                type: "overflow",
+                pageIndex: pIndex,
+                pageName: page.name,
+                boxId: box.id,
+                text: box.text.slice(0, 70),
+              })
+            }
+          }
+        }
+        return {
+          summary: issues.length
+            ? `Phát hiện ${issues.length} vấn đề trên ${targetPages.length} trang`
+            : `Tất cả ${targetPages.length} trang đều đạt chuẩn, sẵn sàng xuất`,
+          data: { checkedPages: targetPages.length, totalIssues: issues.length, issues: issues.slice(0, 50) },
+        }
+      },
+    },
+    {
+      name: "navigate_page",
+      category: "read",
+      timeoutMs: 5000,
+      description: "Chuyển trình biên tập sang trang chỉ định (1-based) để người dùng theo dõi trực tiếp.",
+      parameters: {
+        type: "object",
+        properties: {
+          pageIndex: { type: "integer", description: "Số thứ tự trang cần mở (1-based)." },
+        },
+        required: ["pageIndex"],
+      },
+      async run(args) {
+        const { page, index } = resolvePage(state, selectedPage, args?.pageIndex)
+        if (!page) throw new Error(`Không tồn tại trang số ${args?.pageIndex}.`)
+        if (selectPage) selectPage(page)
+        else {
+          state.pageId = page.id
+          state.boxId = null
+          state.selectedBoxIds?.clear()
+          render()
+        }
+        return {
+          summary: `Đã chuyển sang trang ${index + 1} (${page.name})`,
+          data: { pageIndex: index + 1, pageName: page.name, boxCount: page.boxes.length },
+        }
+      },
+    },
+    {
+      name: "align_boxes",
+      category: "write",
+      description: "Căn thẳng hàng từ 2 khung thoại trở lên theo mép hoặc trục giữa.",
+      parameters: {
+        type: "object",
+        properties: {
+          boxIds: { type: "array", items: { type: "string" }, description: "Danh sách ID các khung cần căn (≥ 2)." },
+          alignment: {
+            type: "string",
+            enum: ["left", "centerX", "right", "top", "centerY", "bottom"],
+            description: "Kiểu căn hàng.",
+          },
+          pageIndex: { type: "integer", description: "Số trang (1-based). Mặc định trang đang mở." },
+        },
+        required: ["boxIds", "alignment"],
+      },
+      async run(args) {
+        const { page, index } = resolvePage(state, selectedPage, args?.pageIndex)
+        if (!page) throw new Error("Không tìm thấy trang cần căn khung.")
+        const ids = Array.isArray(args?.boxIds) ? args.boxIds.map(String) : []
+        if (ids.length < 2) throw new Error("Cần ít nhất 2 boxId để căn hàng.")
+        commitLiveForm?.()
+        checkpoint()
+        const changed = alignBoxes(page.boxes, ids, args.alignment)
+        render()
+        return {
+          summary: changed
+            ? `Đã căn hàng (${args.alignment}) cho ${ids.length} khung trên trang ${index + 1}`
+            : "Các khung đã thẳng hàng sẵn.",
+          data: { pageIndex: index + 1, changed, alignment: args.alignment, count: ids.length },
+        }
+      },
+    },
+    {
+      name: "distribute_boxes",
+      category: "write",
+      description: "Chia đều khoảng cách ngang hoặc dọc cho từ 3 khung thoại trở lên.",
+      parameters: {
+        type: "object",
+        properties: {
+          boxIds: { type: "array", items: { type: "string" }, description: "Danh sách ID các khung (≥ 3)." },
+          axis: { type: "string", enum: ["horizontal", "vertical"], description: "Trục chia đều." },
+          pageIndex: { type: "integer", description: "Số trang (1-based). Mặc định trang đang mở." },
+        },
+        required: ["boxIds", "axis"],
+      },
+      async run(args) {
+        const { page, index } = resolvePage(state, selectedPage, args?.pageIndex)
+        if (!page) throw new Error("Không tìm thấy trang cần chia đều.")
+        const ids = Array.isArray(args?.boxIds) ? args.boxIds.map(String) : []
+        if (ids.length < 3) throw new Error("Cần ít nhất 3 boxId để chia đều khoảng cách.")
+        commitLiveForm?.()
+        checkpoint()
+        const changed = distributeBoxes(page.boxes, ids, args.axis)
+        render()
+        return {
+          summary: changed
+            ? `Đã chia đều (${args.axis}) cho ${ids.length} khung trên trang ${index + 1}`
+            : "Khoảng cách giữa các khung đã đều sẵn.",
+          data: { pageIndex: index + 1, changed, axis: args.axis, count: ids.length },
+        }
+      },
+    },
+    {
+      name: "apply_style_preset",
+      category: "write",
+      description: "Áp dụng một Mẫu dàn chữ (Style Preset) đã lưu trong dự án lên khung, cả trang hoặc cả chương.",
+      parameters: {
+        type: "object",
+        properties: {
+          presetName: { type: "string", description: "Tên mẫu dàn chữ đã lưu." },
+          scope: { type: "string", enum: ["box", "page", "chapter"], description: "Phạm vi áp dụng (mặc định page)." },
+          boxId: { type: "string", description: "ID khung khi scope='box'." },
+          pageIndex: { type: "integer", description: "Số trang (1-based) khi scope='page' hoặc 'box'." },
+        },
+        required: ["presetName"],
+      },
+      async run(args) {
+        const name = String(args?.presetName || "").trim().toLowerCase()
+        const preset = (state.presets ?? []).find((p) => p.name.toLowerCase() === name)
+        if (!preset) {
+          const available = (state.presets ?? []).map((p) => p.name).join(", ")
+          throw new Error(available ? `Không tìm thấy mẫu "${args?.presetName}". Mẫu hiện có: ${available}` : "Dự án chưa có mẫu dàn chữ nào.")
+        }
+        const scope = ["box", "page", "chapter"].includes(args?.scope) ? args.scope : "page"
+        let boxes = []
+        if (scope === "chapter") {
+          boxes = state.pages.flatMap((p) => p.boxes)
+        } else {
+          const { page } = resolvePage(state, selectedPage, args?.pageIndex)
+          if (!page) throw new Error("Không tìm thấy trang để áp dụng mẫu.")
+          boxes = scope === "box"
+            ? page.boxes.filter((b) => b.id === (args?.boxId || state.boxId))
+            : page.boxes
+        }
+        if (!boxes.length) throw new Error("Không có khung thoại nào trong phạm vi áp dụng.")
+        commitLiveForm?.()
+        checkpoint()
+        const defaults = {
+          bold: false, italic: false, uppercase: false, vertical: false,
+          lineHeight: 1.15, strokeWidth: 0, strokeColor: "#ffffff",
+          shadowBlur: 0, shadowColor: "#000000",
+          fillColor: "#ffffff", fillShape: "rect",
+        }
+        boxes.forEach((box) => Object.assign(box, defaults, preset.style))
+        render()
+        return {
+          summary: `Đã áp dụng mẫu "${preset.name}" cho ${boxes.length} khung (${scope})`,
+          data: { presetName: preset.name, scope, updated: boxes.length },
+        }
+      },
+    },
   ]
 
   const byName = new Map(catalog.map((tool) => [tool.name, tool]))
 
-  function isEnabled(tool, { allowEdits = true, allowWebSearch = true } = {}) {
+  function isEnabled(tool, { allowEdits = true, allowWebSearch = true, planMode = false } = {}) {
     if (tool.category === "web" && !allowWebSearch) return false
-    if (tool.category === "write" && !allowEdits) return false
+    if (tool.category === "write" && (!allowEdits || planMode)) return false
+    if (tool.category === "plan" && !planMode) return false
     return true
+  }
+
+  function getRuntimeSnapshot() {
+    const settings = readTranslationSettings?.() ?? {}
+    const current = selectedPage?.() ?? null
+    const currentIdx = selectedIndex?.() ?? -1
+    let overflowCount = 0
+    if (current) {
+      for (const box of current.boxes) {
+        try {
+          if (textOverflowsFn(current, box)) overflowCount++
+        } catch {
+          // Ignore measurement errors in headless test environments.
+        }
+      }
+    }
+    const glossaryLines = String(settings.glossary || "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+    return {
+      pageCount: state.pages.length,
+      currentPageIndex: currentIdx >= 0 ? currentIdx + 1 : null,
+      currentPageName: current?.name ?? null,
+      currentPageSize: current?.image?.naturalWidth
+        ? `${current.image.naturalWidth}×${current.image.naturalHeight}px`
+        : "",
+      boxCount: current?.boxes.length ?? 0,
+      overflowCount,
+      unplacedCount: current?.unplaced?.length ?? 0,
+      queueCount: state.queue?.length ?? 0,
+      glossaryCount: glossaryLines.length,
+      presetNames: (state.presets ?? []).map((p) => p.name),
+      notesPreview: String(settings.notes || "").replace(/\s+/g, " ").trim().slice(0, 160),
+    }
   }
 
   return {
@@ -496,20 +853,40 @@ export function createAgentTools({
     isConcurrencySafe(name) {
       return byName.get(name)?.isConcurrencySafe === true
     },
+    categoryOf(name) {
+      return byName.get(name)?.category ?? "read"
+    },
     timeoutMs(name) {
       return byName.get(name)?.timeoutMs ?? 12000
     },
-    async execute(name, args, { allowEdits = true, allowWebSearch = true, signal } = {}) {
+    getRuntimeSnapshot,
+    getTodos() {
+      return currentTodos
+    },
+    getPlan() {
+      return currentPlan
+    },
+    resetTurnState() {
+      currentTodos = []
+      currentPlan = null
+    },
+    async execute(name, args, { allowEdits = true, allowWebSearch = true, planMode = false, signal } = {}) {
       const tool = byName.get(name)
       if (!tool) return { ok: false, error: `Công cụ không tồn tại: ${name}` }
-      if (!isEnabled(tool, { allowEdits, allowWebSearch })) {
-        return { ok: false, error: `Công cụ "${name}" đang bị tắt bởi thiết lập quyền của người dùng.` }
+      if (!isEnabled(tool, { allowEdits, allowWebSearch, planMode })) {
+        return {
+          ok: false,
+          category: tool.category,
+          error: planMode && tool.category === "write"
+            ? `Công cụ "${name}" đang bị khóa trong Chế độ Kế hoạch (Plan Mode). Hãy dùng submit_plan trước.`
+            : `Công cụ "${name}" đang bị tắt bởi thiết lập quyền của người dùng.`,
+        }
       }
       try {
         const result = await tool.run(args ?? {}, { signal })
-        return { ok: true, ...result }
+        return { ok: true, category: tool.category, ...result }
       } catch (error) {
-        return { ok: false, error: error?.message || String(error) }
+        return { ok: false, category: tool.category, error: error?.message || String(error) }
       }
     },
   }

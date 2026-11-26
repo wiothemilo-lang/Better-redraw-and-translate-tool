@@ -13,6 +13,7 @@ export function setupOcr({
   selectedPage,
   selectedBox,
   projectBusy,
+  notifyOverflowIfAny,
 }) {
   let review
   const dialog = byId("ocr-review")
@@ -148,11 +149,13 @@ export function setupOcr({
       }
       applied++
     }
+    const appliedPage = review.page
     dialog.close()
     render()
     status(
       `Đã áp dụng ${applied} vùng OCR. Vùng chồng khung có sẵn được đưa vào Chưa đặt.`,
     )
+    if (applied > 0) notifyOverflowIfAny?.(appliedPage, "sau khi áp dụng OCR")
   }
   byId("cancel-ocr").onclick = () => dialog.close()
   dialog.addEventListener("close", () => {

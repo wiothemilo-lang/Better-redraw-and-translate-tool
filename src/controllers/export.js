@@ -18,21 +18,37 @@ export function setupExports({
   readTranslationSettings,
   isNativeReady,
   commitLiveForm,
+  notify,
 }) {
   const exportButtons = [...document.querySelectorAll("[data-export]")]
   function extensionFor(format) {
     return format === "png" ? "png" : "psd"
   }
 
-  async function performExport(action) {
+  async function performExport(action, summaryLabel) {
     if (state.exporting || state.openingProject) return
     state.exporting = true
     renderPages()
     try {
-      await action()
+      const outcome = await action()
+      if (outcome === false) return
       status("Đã tạo tệp xuất.")
+      if (summaryLabel) {
+        notify?.({
+          kind: "success",
+          title: "Xuất tệp hoàn tất",
+          message: summaryLabel,
+          key: "export-done",
+        })
+      }
     } catch (error) {
       status("Xuất thất bại. " + error.message, true)
+      notify?.({
+        kind: "error",
+        title: "Xuất tệp thất bại",
+        message: error.message,
+        key: "export-done",
+      })
     } finally {
       state.exporting = false
       renderPages()
@@ -162,7 +178,7 @@ export function setupExports({
             "zip",
             "khung-thoai-png.zip",
           )
-          if (!transfer) return
+          if (!transfer) return false
           try {
             for (const [index, page] of pages.entries()) {
               status(`Đang xuất PNG bằng C# ${index + 1}/${pages.length}…`)
@@ -203,7 +219,7 @@ export function setupExports({
           await zip.generateAsync({ type: "blob" }),
           "khung-thoai-" + format + ".zip",
         )
-      }),
+      }, `Đã xuất gói ZIP ${format.toUpperCase()} gồm ${state.pages.length} trang.`),
     )
   })
 
