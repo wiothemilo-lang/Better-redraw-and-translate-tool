@@ -1,3 +1,4 @@
+import { executeToolBatch } from "./agent-pipeline.js"
 import { validateEndpointUrl } from "./openai-compat.js"
 
 const geminiModelOptions = {
@@ -246,34 +247,30 @@ export async function runAgentTurn({
       geminiContents.push(reply.rawModelContent)
     }
 
-    const geminiResponses = []
-    for (const call of reply.toolCalls) {
-      signal?.throwIfAborted()
-      const start = performance.now()
-      onEvent({ type: "tool_start", id: call.id, name: call.name, args: call.args })
-      const outcome = await tools.execute(call.name, call.args, { allowEdits, allowWebSearch, signal })
-      const durationMs = Math.round(performance.now() - start)
-      const entry = {
-        id: call.id,
-        name: call.name,
-        args: call.args,
-        ok: outcome.ok,
-        summary: outcome.ok ? outcome.summary : outcome.error,
-        data: outcome.data,
-        error: outcome.error,
-        durationMs,
-      }
-      toolTrace.push(entry)
-      onEvent({ type: "tool_end", ...entry })
+    const settled = await executeToolBatch(reply.toolCalls, {
+      tools,
+      allowEdits,
+      allowWebSearch,
+      maxParallel: 4,
+      signal,
+      onEvent,
+    })
 
-      const serialized = JSON.stringify(outcome.ok ? { ok: true, summary: outcome.summary, data: outcome.data } : { ok: false, error: outcome.error })
+    const geminiResponses = []
+    for (const entry of settled) {
+      toolTrace.push(entry)
+      const modelPayload = entry.ok
+        ? (entry.modelText ?? JSON.stringify({ ok: true, summary: entry.summary, data: entry.data }))
+        : JSON.stringify({ ok: false, error: entry.error, ...(entry.code && { code: entry.code }) })
       if (isOpenAi) {
-        openAiMessages.push({ role: "tool", tool_call_id: call.id, content: serialized })
+        openAiMessages.push({ role: "tool", tool_call_id: entry.id, content: modelPayload })
       } else {
         geminiResponses.push({
           functionResponse: {
-            name: call.name,
-            response: outcome.ok ? { ok: true, summary: outcome.summary, data: outcome.data } : { ok: false, error: outcome.error },
+            name: entry.name,
+            response: entry.ok
+              ? (entry.modelText ? { ok: true, content: entry.modelText } : { ok: true, summary: entry.summary, data: entry.data })
+              : { ok: false, error: entry.error, ...(entry.code && { code: entry.code }) },
           },
         })
       }

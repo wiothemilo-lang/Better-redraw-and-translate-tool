@@ -1,4 +1,7 @@
 import { inpaintRegion } from "./inpaint.js"
+import { desktop } from "./native.js"
+
+const nativeInpaintCache = new WeakMap()
 
 const isFraction = (value) => Number.isFinite(value) && value >= 0 && value <= 1
 const inRange = (value, min, max) => Number.isFinite(value) && value >= min && value <= max
@@ -128,6 +131,15 @@ function renderRetouchStrokes(context, page, width, height) {
       continue
     }
     if (stroke.mode === "inpaint" && page.image) {
+      const nativePatch = nativeInpaintCache.get(stroke)
+      if (nativePatch && nativePatch.width === width && nativePatch.height === height) {
+        context.save()
+        context.globalAlpha = opacity
+        context.drawImage(nativePatch.canvas, nativePatch.left, nativePatch.top)
+        context.restore()
+        painted = true
+        continue
+      }
       const radius = Math.ceil(lineWidth / 2) + 2
       const margin = Math.max(18, Math.min(36, Math.ceil(lineWidth)))
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
@@ -182,6 +194,85 @@ function renderRetouchStrokes(context, page, width, height) {
     }
   }
   return painted
+}
+
+function inpaintBounds(stroke, width, height) {
+  const minDimension = Math.min(width, height)
+  const lineWidth = Math.max(1, stroke.size * minDimension)
+  const radius = Math.ceil(lineWidth / 2) + 2
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const point of stroke.points) {
+    const px = point.x * width
+    const py = point.y * height
+    if (px < minX) minX = px
+    if (py < minY) minY = py
+    if (px > maxX) maxX = px
+    if (py > maxY) maxY = py
+  }
+  const holeW = Math.max(1, maxX - minX + radius * 2)
+  const holeH = Math.max(1, maxY - minY + radius * 2)
+  // Match PhotoCraft's generous sampling context around the stroke so PatchMatch has rich texture sources.
+  const margin = Math.max(24, Math.min(96, Math.round(Math.sqrt(Math.max(holeW, 50) * Math.max(holeH, 50)))))
+  const left = Math.max(0, Math.floor(minX - radius - margin))
+  const top = Math.max(0, Math.floor(minY - radius - margin))
+  const right = Math.min(width, Math.ceil(maxX + radius + margin))
+  const bottom = Math.min(height, Math.ceil(maxY + radius + margin))
+  return { left, top, bw: right - left, bh: bottom - top, lineWidth }
+}
+
+export async function prepareNativeInpaint(page, stroke) {
+  if (!desktop?.native || stroke?.mode !== "inpaint" || !page?.image || !stroke.points?.length) return false
+  if (nativeInpaintCache.has(stroke)) return true
+  const width = page.image.naturalWidth
+  const height = page.image.naturalHeight
+  if (!width || !height) return false
+  const { left, top, bw, bh, lineWidth } = inpaintBounds(stroke, width, height)
+  if (bw <= 2 || bh <= 2 || bw * bh > 2_500_000) return false
+
+  const maskCanvas = document.createElement("canvas")
+  maskCanvas.width = bw
+  maskCanvas.height = bh
+  const maskCtx = maskCanvas.getContext("2d", { willReadFrequently: true })
+  maskCtx.strokeStyle = "#fff"
+  maskCtx.lineWidth = lineWidth
+  maskCtx.lineCap = "round"
+  maskCtx.lineJoin = "round"
+  drawStrokePath(maskCtx, stroke.points, width, height, left, top)
+  const maskRgba = maskCtx.getImageData(0, 0, bw, bh).data
+  const mask = new Uint8Array(bw * bh)
+  let any = false
+  for (let i = 0; i < mask.length; i++) {
+    if (maskRgba[i * 4 + 3] >= 32) {
+      mask[i] = 1
+      any = true
+    }
+  }
+  if (!any) return false
+
+  const patchCanvas = document.createElement("canvas")
+  patchCanvas.width = bw
+  patchCanvas.height = bh
+  const patchCtx = patchCanvas.getContext("2d", { willReadFrequently: true })
+  patchCtx.drawImage(page.image, -left, -top)
+  const rgba = patchCtx.getImageData(0, 0, bw, bh).data
+  const payload = new Uint8Array(rgba.length + mask.length)
+  payload.set(rgba, 0)
+  payload.set(mask, rgba.length)
+
+  try {
+    const response = await desktop.native("inpaint", { width: bw, height: bh, patchRadius: 3, colorAdapt: true }, payload)
+    const out = new Uint8ClampedArray(response.data)
+    if (out.length !== rgba.length) return false
+    for (let i = 0; i < mask.length; i++) {
+      out[i * 4 + 3] = mask[i] ? maskRgba[i * 4 + 3] : 0
+    }
+    patchCtx.putImageData(new ImageData(out, bw, bh), 0, 0)
+    nativeInpaintCache.set(stroke, { canvas: patchCanvas, left, top, width, height })
+    retouchCache.delete(page.image)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function paintRetouchStrokes(canvas, page) {

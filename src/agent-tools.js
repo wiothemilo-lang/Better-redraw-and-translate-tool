@@ -1,6 +1,11 @@
 import { autoFitBox as defaultAutoFitBox, clamp, makeBox as defaultMakeBox, textOverflows as defaultTextOverflows } from "./canvas.js"
 import { findMatches, replaceMatches } from "./tools.js"
-import { fetchWebPage as defaultFetchWebPage, searchWeb as defaultSearchWeb } from "./web-search.js"
+import {
+  EXTERNAL_WEB_CONTENT_NOTICE,
+  fetchWebPage as defaultFetchWebPage,
+  searchWeb as defaultSearchWeb,
+  truncateSafe,
+} from "./web-search.js"
 
 const hexColor = /^#[\da-f]{6}$/i
 
@@ -36,30 +41,65 @@ export function createAgentTools({
     {
       name: "web_search",
       category: "web",
+      isConcurrencySafe: true,
+      timeoutMs: 18000,
       description:
-        "Tìm kiếm thông tin trên web (tên nhân vật manga/anime, wiki, thuật ngữ tiếng Nhật/Hàn/Trung, từ lóng, SFX). Trả về danh sách tiêu đề, URL và đoạn trích.",
+        "Tìm kiếm thông tin trên web (tên nhân vật manga/anime, wiki, thuật ngữ tiếng Nhật/Hàn/Trung, từ lóng, SFX). Hỗ trợ tra 1 từ khóa (query) hoặc tối đa 5 từ khóa song song (queries).",
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Từ khóa tìm kiếm." },
+          query: { type: "string", description: "Một từ khóa tìm kiếm." },
+          queries: {
+            type: "array",
+            items: { type: "string" },
+            description: "Danh sách tối đa 5 từ khóa cần tra song song trong một lượt.",
+          },
           limit: { type: "integer", description: "Số kết quả tối đa (1-8, mặc định 5)." },
         },
-        required: ["query"],
       },
       async run(args, { signal }) {
         const cfg = searchConfig()
         const limit = clamp(Math.round(Number(args?.limit) || 5), 1, 8)
-        const data = await searchWebFn(args?.query, { ...cfg, limit, signal })
-        const count = data.results?.length ?? 0
+        const rawList = Array.isArray(args?.queries) && args.queries.length
+          ? args.queries
+          : [args?.query]
+        const queries = [...new Set(rawList.map((q) => String(q || "").trim()).filter(Boolean))].slice(0, 5)
+        if (!queries.length) throw new Error("Hãy cung cấp query hoặc queries để tìm kiếm.")
+
+        const batches = await Promise.all(queries.map((q) => searchWebFn(q, { ...cfg, limit, signal })))
+        const seen = new Set()
+        const merged = []
+        let provider = "web"
+        for (const batch of batches) {
+          if (batch?.provider) provider = batch.provider
+          for (const item of batch?.results ?? []) {
+            if (!item?.url || seen.has(item.url)) continue
+            seen.add(item.url)
+            const snippet = truncateSafe(String(item.snippet || "").replace(/\s+/g, " ").trim(), 800)
+            merged.push({ ...item, snippet })
+            if (merged.length >= Math.min(10, limit * queries.length)) break
+          }
+        }
+        const sourcesMarkdown = merged.length
+          ? merged.map((s) => `- [${s.title || s.url}](${s.url})${s.snippet ? ` — ${s.snippet}` : ""}`).join("\n")
+          : "No results found."
+        const modelText = [
+          EXTERNAL_WEB_CONTENT_NOTICE,
+          `Sources:\n${sourcesMarkdown}`,
+          "Cite the relevant URLs above as markdown links in your answer.",
+        ].join("\n\n")
         return {
-          summary: `Tìm thấy ${count} kết quả (${data.provider ?? "web"}) cho "${data.query}"`,
-          data,
+          summary: `Tìm thấy ${merged.length} kết quả (${provider}) cho ${queries.length > 1 ? `${queries.length} từ khóa` : `"${queries[0]}"`}`,
+          data: { queries, provider, results: merged },
+          modelText,
         }
       },
     },
     {
       name: "fetch_url",
       category: "web",
+      isConcurrencySafe: true,
+      timeoutMs: 18000,
       description:
         "Đọc nội dung văn bản từ một URL HTTPS công khai (ví dụ bài Wikipedia/Fandom wiki lấy được từ web_search).",
       parameters: {
@@ -73,15 +113,24 @@ export function createAgentTools({
       async run(args, { signal }) {
         const maxChars = clamp(Math.round(Number(args?.maxChars) || 6000), 500, 12000)
         const page = await fetchWebPageFn(args?.url, { maxChars, signal })
+        const modelText = [
+          EXTERNAL_WEB_CONTENT_NOTICE,
+          `URL: ${page.url}`,
+          page.title ? `Title: ${page.title}` : "",
+          page.text,
+        ].filter(Boolean).join("\n\n")
         return {
           summary: `Đã đọc "${page.title || page.url}" (${page.text.length} ký tự)`,
           data: page,
+          modelText,
         }
       },
     },
     {
       name: "get_project_state",
       category: "read",
+      isConcurrencySafe: true,
+      timeoutMs: 8000,
       description: "Xem tổng quan dự án hiện tại: số trang, tên các trang, trang đang mở, ngôn ngữ dịch, ghi chú và bảng thuật ngữ.",
       parameters: { type: "object", properties: {} },
       async run() {
@@ -114,6 +163,8 @@ export function createAgentTools({
     {
       name: "list_boxes",
       category: "read",
+      isConcurrencySafe: true,
+      timeoutMs: 8000,
       description: "Liệt kê tất cả khung thoại trên trang hiện tại (hoặc trang chỉ định theo số thứ tự 1-based), kèm cờ tràn khung (overflow).",
       parameters: {
         type: "object",
@@ -156,6 +207,8 @@ export function createAgentTools({
     {
       name: "search_chapter_text",
       category: "read",
+      isConcurrencySafe: true,
+      timeoutMs: 8000,
       description: "Tìm kiếm từ hoặc cụm từ trong lời thoại toàn bộ chương.",
       parameters: {
         type: "object",
@@ -439,6 +492,12 @@ export function createAgentTools({
       return catalog
         .filter((tool) => isEnabled(tool, flags))
         .map(({ name, description, parameters }) => ({ name, description, parameters }))
+    },
+    isConcurrencySafe(name) {
+      return byName.get(name)?.isConcurrencySafe === true
+    },
+    timeoutMs(name) {
+      return byName.get(name)?.timeoutMs ?? 12000
     },
     async execute(name, args, { allowEdits = true, allowWebSearch = true, signal } = {}) {
       const tool = byName.get(name)

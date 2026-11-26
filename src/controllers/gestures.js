@@ -1,6 +1,6 @@
 import { clamp } from "../canvas.js"
 import { detectBubbleOnImage } from "../bubble.js"
-import { samplePixelColor } from "../retouch.js"
+import { prepareNativeInpaint, samplePixelColor } from "../retouch.js"
 import { resizeBox, rotateBox, snapBox } from "../tools.js"
 
 const zoomSteps = [.25, .5, .75, 1, 1.25, 1.5, 2, 3, 4]
@@ -456,6 +456,12 @@ export function setupGestures({
         page.retouchStrokes ??= []
         page.retouchStrokes.push(completed.stroke)
         checkpoint(completed.before)
+        prepareNativeInpaint(page, completed.stroke).then((usedNative) => {
+          if (usedNative && selectedPage() === page) {
+            paintPreview(page)
+            status("Đã tái tạo nền sắc nét bằng C# PatchMatch Inpaint.")
+          }
+        })
       }
       render()
       status("Đã tẩy chữ và tái tạo nền bằng Inpaint.")

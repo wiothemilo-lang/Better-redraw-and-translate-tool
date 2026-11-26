@@ -39,6 +39,7 @@ internal static class NativeRpc
                     "capabilities" => (await LocalOcr.Capabilities(), []),
                     "redraw" => Redraw(options, data),
                     "mask" => (new JsonObject(), NativeImaging.Mask(options, data)),
+                    "inpaint" => PatchMatchInpaint.Execute(options, data),
                     "preprocess" => NativeImaging.Preprocess(options, data),
                     "ocr" => (await LocalOcr.Recognize(options, data), []),
                     "png" => (new JsonObject(), NativeImaging.CompositePng(options, data)),

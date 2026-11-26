@@ -169,3 +169,54 @@ test("native client reads fragmented progress and final frames from a coalesced 
   assert.deepEqual(events, [{ progress: 40, stage: "OCR" }])
   assert.deepEqual([...result.data], [10, 20])
 })
+
+test("native PatchMatch inpaint reconstructs masked regions with color adaptation and leaves unmasked pixels untouched", { skip: !available }, async (t) => {
+  const worker = new native.NativeWorker(executable)
+  t.after(() => worker.close())
+  const { result: capabilities } = await worker.call("capabilities")
+  assert.ok(capabilities.operations.includes("inpaint"))
+
+  const width = 96
+  const height = 96
+  const clean = new Uint8Array(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const off = (y * width + x) * 4
+      const stripe = ((x + y) % 8) < 4 ? 210 : 120
+      clean[off] = Math.min(255, stripe + Math.round(x * .3))
+      clean[off + 1] = Math.min(255, stripe + Math.round(y * .2))
+      clean[off + 2] = stripe
+      clean[off + 3] = 255
+    }
+  }
+  const corrupted = new Uint8Array(clean)
+  const mask = new Uint8Array(width * height)
+  let holeCount = 0
+  for (let y = 38; y < 58; y++) {
+    for (let x = 36; x < 60; x++) {
+      const idx = y * width + x
+      mask[idx] = 255
+      holeCount++
+      corrupted[idx * 4] = 10
+      corrupted[idx * 4 + 1] = 10
+      corrupted[idx * 4 + 2] = 10
+    }
+  }
+  const payload = Buffer.concat([corrupted, mask])
+  const { result, data } = await worker.call("inpaint", { width, height, patchRadius: 3, colorAdapt: true }, payload)
+  assert.equal(result.filled, holeCount)
+  assert.equal(data.length, clean.length)
+
+  let outsideDiffs = 0
+  let afterErr = 0
+  for (let i = 0; i < width * height; i++) {
+    if (!mask[i]) {
+      for (let c = 0; c < 4; c++) if (data[i * 4 + c] !== clean[i * 4 + c]) outsideDiffs++
+    } else {
+      for (let c = 0; c < 3; c++) afterErr += Math.abs(data[i * 4 + c] - clean[i * 4 + c])
+    }
+  }
+  assert.equal(outsideDiffs, 0)
+  const mae = afterErr / (holeCount * 3)
+  assert.ok(mae < 25, `Expected low C# PatchMatch MAE, got ${mae}`)
+})

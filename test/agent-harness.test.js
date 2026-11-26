@@ -1,7 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { parseTextToolCalls, runAgentTurn, stripReasoning } from "../src/agent-harness.js"
+import { executeToolBatch, TOOL_ABORTED_BEFORE_DISPATCH } from "../src/agent-pipeline.js"
 import { createAgentTools } from "../src/agent-tools.js"
+import { EXTERNAL_WEB_CONTENT_NOTICE } from "../src/web-search.js"
 
 function makeHarnessContext() {
   const glossaryField = { value: "先生 = Thầy", dispatchEvent() {} }
@@ -181,4 +183,56 @@ test("runAgentTurn executes OpenAI-compatible tool_calls and parses <tool_call>/
   assert.equal(result.toolTrace[0].data.boxes[0].overflow, true)
   assert.equal(result.thought, "Need to inspect boxes first\n\nDone")
   assert.match(result.answer, /tràn chữ/)
+})
+
+test("executeToolBatch runs concurrency-safe tools in parallel, enforces exclusive barriers, and preserves order", async () => {
+  const timeline = []
+  const fakeTools = {
+    isConcurrencySafe: (name) => name === "read_a" || name === "read_b",
+    timeoutMs: () => 5000,
+    async execute(name, args) {
+      timeline.push("start:" + name)
+      const delay = name === "read_a" ? 30 : name === "read_b" ? 5 : 5
+      await new Promise((r) => setTimeout(r, delay))
+      timeline.push("end:" + name)
+      return { ok: true, summary: name, data: args }
+    },
+  }
+  const results = await executeToolBatch(
+    [
+      { id: "1", name: "read_a", args: { k: 1 } },
+      { id: "2", name: "read_b", args: { k: 2 } },
+      { id: "3", name: "mutate", args: { k: 3 } },
+    ],
+    { tools: fakeTools, maxParallel: 4 },
+  )
+  // Both reads must start before either finishes; mutate must start strictly after both reads end.
+  assert.ok(timeline.indexOf("start:read_b") < timeline.indexOf("end:read_a"))
+  assert.ok(timeline.indexOf("start:mutate") > timeline.indexOf("end:read_a"))
+  assert.ok(timeline.indexOf("start:mutate") > timeline.indexOf("end:read_b"))
+  assert.deepEqual(results.map((r) => r.id), ["1", "2", "3"])
+
+  // Pre-aborted batch synthesizes TOOL_ABORTED_BEFORE_DISPATCH for skipped calls.
+  const controller = new AbortController()
+  controller.abort()
+  const aborted = await executeToolBatch([{ id: "9", name: "read_a", args: {} }], {
+    tools: fakeTools,
+    signal: controller.signal,
+  })
+  assert.equal(aborted[0].code, TOOL_ABORTED_BEFORE_DISPATCH)
+})
+
+test("web_search supports multi-query deduplication and fences web output with EXTERNAL_WEB_CONTENT_NOTICE", async () => {
+  const { tools } = makeHarnessContext()
+  assert.equal(tools.isConcurrencySafe("web_search"), true)
+  assert.equal(tools.isConcurrencySafe("update_box"), false)
+
+  const searchRes = await tools.execute("web_search", { queries: ["Gojo", "Sukuna", "Gojo"] }, { allowWebSearch: true })
+  assert.equal(searchRes.ok, true)
+  assert.deepEqual(searchRes.data.queries, ["Gojo", "Sukuna"])
+  assert.ok(searchRes.modelText.startsWith(EXTERNAL_WEB_CONTENT_NOTICE))
+
+  const fetchRes = await tools.execute("fetch_url", { url: "https://en.wikipedia.org/wiki/Test" }, { allowWebSearch: true })
+  assert.equal(fetchRes.ok, true)
+  assert.ok(fetchRes.modelText.startsWith(EXTERNAL_WEB_CONTENT_NOTICE))
 })

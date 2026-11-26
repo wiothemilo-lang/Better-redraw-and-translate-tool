@@ -1,8 +1,48 @@
 const net = require("node:net")
 
 const MAX_FETCH_BYTES = 512 * 1024
+const MAX_HTML_DEPTH = 512
 const TIMEOUT_MS = 12000
 const USER_AGENT = "KhungThoai/1.0 (Manga Editor Research Harness)"
+const VOID_TAGS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"])
+
+function exceedsHtmlDepth(html, maxDepth = MAX_HTML_DEPTH) {
+  let depth = 0
+  let pos = 0
+  const source = String(html || "")
+  while (pos < source.length) {
+    const start = source.indexOf("<", pos)
+    if (start < 0) break
+    if (source.startsWith("<!--", start)) {
+      const end = source.indexOf("-->", start + 4)
+      if (end < 0) break
+      pos = end + 3
+      continue
+    }
+    const end = source.indexOf(">", start + 1)
+    if (end < 0) break
+    const raw = source.slice(start + 1, end).trim()
+    pos = end + 1
+    if (!raw || raw.startsWith("!") || raw.startsWith("?")) continue
+    const closing = raw.startsWith("/")
+    const tag = (closing ? raw.slice(1) : raw).split(/[\s/]/, 1)[0].toLowerCase()
+    if (!tag || VOID_TAGS.has(tag) || raw.endsWith("/")) continue
+    if (closing) depth = Math.max(0, depth - 1)
+    else if (++depth > maxDepth) return true
+  }
+  return false
+}
+
+function truncateSafe(text, maxChars) {
+  const s = String(text || "")
+  if (s.length <= maxChars) return s
+  let end = maxChars
+  if (end > 0) {
+    const code = s.charCodeAt(end - 1)
+    if (code >= 0xd800 && code <= 0xdbff) end--
+  }
+  return s.slice(0, end)
+}
 
 function isPrivateIp(host) {
   const clean = host.replace(/^\[|\]$/g, "").toLowerCase()
@@ -61,11 +101,19 @@ function decodeHtmlEntities(text) {
 }
 
 function stripHtmlToText(html, maxChars = 8000) {
-  const cleaned = String(html || "")
+  const raw = String(html || "")
+  if (exceedsHtmlDepth(raw)) return "[Nội dung HTML quá sâu — đã bỏ qua để đảm bảo an toàn.]"
+  const cleaned = raw
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, " ")
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, " ")
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, " ")
+    .replace(/<embed\b[^>]*>/gi, " ")
     .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, " ")
+    // Strip hidden elements that can smuggle hidden prompt-injection instructions.
+    .replace(/<([a-z0-9-]+)\b[^>]*(?:\bhidden\b|aria-hidden\s*=\s*["']?true["']?|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^"']*["'])[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<\/(p|div|li|tr|h[1-6]|br|section|article)>/gi, "\n")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
@@ -74,7 +122,7 @@ function stripHtmlToText(html, maxChars = 8000) {
     .replace(/\n[ \t]+/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
-  return text.length > maxChars ? text.slice(0, maxChars) + "\n…(đã rút gọn)" : text
+  return text.length > maxChars ? truncateSafe(text, maxChars) + "\n…(đã rút gọn)" : text
 }
 
 function unwrapDuckDuckGoUrl(rawHref) {
