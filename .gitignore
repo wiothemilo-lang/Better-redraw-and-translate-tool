@@ -7,3 +7,5 @@ native/bin/
 native/obj/
 native/out/
 artifacts/
+release-dist/
+release-stage/

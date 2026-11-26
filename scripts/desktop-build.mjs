@@ -36,7 +36,7 @@ if (mode === "app") {
     overwrite: true,
     out: path.join(root, "desktop-dist"),
     extraResource: [worker],
-    ignore: /^(\/(?:node_modules|native|scripts|src|test|desktop-dist|\.git)(?:\/|$)|\/(?:package-lock\.json|index\.html|vite\.config\.js|.*\.md)$)/,
+    ignore: /^(\/(?:node_modules|native|scripts|src|test|desktop-dist|release-dist|release-stage|artifacts|\.git)(?:\/|$)|\/(?:package-lock\.json|index\.html|vite\.config\.js|.*\.md)$)/,
   })
   paths.forEach((location) => console.log(location))
 }

@@ -1,0 +1,172 @@
+name: Release Desktop Installers
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.0.0). Leave empty to use v<package.json version>."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: resolve
+        shell: bash
+        run: |
+          PKG_VER=$(node -p "require('./package.json').version")
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="v${PKG_VER}"
+          fi
+          VER="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Release tag=${TAG} version=${VER}"
+
+  build-linux:
+    name: Build Linux (.deb, .rpm, .tar.gz)
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install Linux OCR, desktop, and packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-jpn-vert xvfb libasound2t64 rpm dpkg-dev
+      - run: npm ci
+      - run: npm run desktop:native -- linux-x64
+      - run: npm test
+      - run: npm run desktop:package -- linux-x64
+      - name: Smoke test packaged Linux app
+        run: xvfb-run -a npm run test:desktop -- --packaged
+      - name: Build .deb (Debian/Ubuntu), .rpm (Fedora), and .tar.gz
+        run: node scripts/package-release.mjs linux-x64 "${{ needs.meta.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x64
+          path: release-dist/*
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows 10/11 (.exe Setup & Portable .zip)
+    needs: meta
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install Windows OCR and Inno Setup
+        shell: pwsh
+        run: |
+          choco install tesseract --yes --no-progress
+          "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") -and -not (Test-Path "C:\Program Files\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --yes --no-progress
+          }
+      - run: npm ci
+      - run: npm run desktop:native -- win-x64
+      - run: npm test
+      - run: npm run desktop:package -- win-x64
+      - name: Smoke test packaged Windows app
+        run: npm run test:desktop -- --packaged
+      - name: Build Windows Setup (.exe) and Portable (.zip)
+        run: node scripts/package-release.mjs win-x64 "${{ needs.meta.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-win-x64
+          path: release-dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [meta, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Generate SHA256SUMS.txt
+        working-directory: release-assets
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          cat << EOF > release-notes.md
+          # Khung Thoại ${TAG}
+
+          Bản phát hành chính thức đầu tiên của **Khung Thoại** — ứng dụng biên tập, xóa chữ (redraw), OCR, dịch thuật và dàn thoại truyện tranh/manga với lõi xử lý ảnh **C#/.NET 10** tự chứa, hỗ trợ **Windows 10/11**, **Ubuntu / Debian-based Linux** và **Fedora Linux**.
+
+          ## Tải về theo hệ điều hành
+
+          | Hệ điều hành | Gói cài đặt | Cách cài đặt nhanh |
+          |---|---|---|
+          | **Windows 10 / 11 (x64)** | \`Khung-Thoai-${VER}-win-x64-setup.exe\` | Chạy trình cài đặt (không cần quyền Admin, hỗ trợ mở tệp \`.khungthoai\`) |
+          | **Windows 10 / 11 (Portable)** | \`Khung-Thoai-${VER}-win-x64-portable.zip\` | Giải nén và chạy \`Khung-Thoai.exe\` |
+          | **Ubuntu / Debian / Mint / Pop!_OS (x64)** | \`khung-thoai_${VER}_amd64.deb\` | \`sudo apt install ./khung-thoai_${VER}_amd64.deb\` |
+          | **Fedora Linux (x64)** | \`khung-thoai-${VER}-1.x86_64.rpm\` | \`sudo dnf install ./khung-thoai-${VER}-1.x86_64.rpm\` |
+          | **Linux khác (Portable x64)** | \`khung-thoai-${VER}-linux-x64.tar.gz\` | Giải nén và chạy \`./Khung-Thoai\` |
+
+          ## Bật OCR cục bộ (tùy chọn)
+          Ứng dụng tích hợp sẵn lõi redraw/inpaint C#/.NET 10. Để dùng thêm **OCR offline**:
+          - **Ubuntu / Debian**: \`sudo apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-jpn tesseract-ocr-jpn-vert\`
+          - **Fedora**: \`sudo dnf install tesseract tesseract-langpack-eng tesseract-langpack-jpn tesseract-langpack-jpn_vert\`
+          - **Windows 10/11**: Cài [UB-Mannheim Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) hoặc \`winget install UB-Mannheim.TesseractOCR\`
+
+          ## Tính năng nổi bật trong ${TAG}
+          - **Biên tập & dàn chữ chuyên nghiệp**: Co giãn 8 tay cầm (gồm khung xoay), xoay 15°, chọn nhiều khung & căn hàng/chia đều, hút lưới tự động, chấm bong bóng thoại tự động, viền chữ + đổ bóng + chữ dọc + xuất **PSD Layer Style** chuẩn Photoshop, nạp và lưu font cục bộ.
+          - **Xóa chữ & Retouch lõi C#/.NET 10**: Phục hồi nền trơn, chuyển sắc, screentone lặp, mặt nạ bảo vệ nét vẽ, và **Cọ tẩy chữ thông minh Multi-Scale PatchMatch Inpaint** (EM Voting + Colour Adaptation).
+          - **Dịch linh hoạt (Gemini API & Local/OpenAI LLM)**: Hỗ trợ Ollama, LM Studio, Hy-MT2, OpenRouter, dịch ảnh hoặc dịch trực tiếp các khung OCR sẵn có, bảng thuật ngữ và ngữ cảnh liên trang.
+          - **Trợ lý AI · Agent Harness v2**: Ngữ cảnh trực tiếp dự án, quy chuẩn biên tập, danh sách tiến độ (Todo), **Chế độ Kế hoạch (Plan Mode)**, tự nén ngữ cảnh công cụ, **Web Search** (DuckDuckGo + Jisho + Wikipedia / Tavily / SearXNG) và 18 công cụ biên tập kèm Hoàn tác.
+          - **Kiểm tra cập nhật & Trung tâm Thông báo**: Tự kiểm tra bản mới qua GitHub Releases, cảnh báo khung tràn chữ kèm nút 1 chạm **Khớp cỡ cả trang**, nhắc lưu dự án và trạng thái mạng.
+
+          Kiểm tra toàn vẹn tệp bằng \`SHA256SUMS.txt\`.
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "Khung Thoại ${TAG}" --notes-file release-notes.md
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/* \
+              --title "Khung Thoại ${TAG}" \
+              --notes-file release-notes.md
+          fi

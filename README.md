@@ -22,7 +22,26 @@ Công cụ biên tập, xóa chữ (redraw), dịch thuật và dàn thoại tru
 
 ---
 
-## Yêu cầu & Chạy tại máy
+## Cài đặt bản phát hành chính thức (Windows & Linux)
+
+Tải gói cài đặt sẵn lõi C#/.NET 10 tại trang [GitHub Releases](https://github.com/wiothemilo-lang/Nixio/releases):
+
+| Hệ điều hành | Định dạng | Cách cài đặt |
+|---|---|---|
+| **Windows 10 / 11 (x64)** | `Khung-Thoai-*-win-x64-setup.exe` | Chạy trình cài đặt (không cần quyền Admin, tự liên kết tệp `.khungthoai`) |
+| **Windows 10 / 11 (Portable)** | `Khung-Thoai-*-win-x64-portable.zip` | Giải nén và mở `Khung-Thoai.exe` |
+| **Ubuntu / Debian / Mint / Pop!_OS (x64)** | `khung-thoai_*_amd64.deb` | `sudo apt install ./khung-thoai_*_amd64.deb` |
+| **Fedora Linux (x64)** | `khung-thoai-*-1.x86_64.rpm` | `sudo dnf install ./khung-thoai-*-1.x86_64.rpm` |
+| **Linux khác (Portable x64)** | `khung-thoai-*-linux-x64.tar.gz` | Giải nén và chạy `./Khung-Thoai` |
+
+> **OCR offline (tùy chọn)**: cài thêm Tesseract cho hệ điều hành của bạn:
+> - Ubuntu/Debian: `sudo apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-jpn tesseract-ocr-jpn-vert`
+> - Fedora: `sudo dnf install tesseract tesseract-langpack-eng tesseract-langpack-jpn tesseract-langpack-jpn_vert`
+> - Windows: `winget install UB-Mannheim.TesseractOCR`
+
+---
+
+## Yêu cầu & Chạy từ mã nguồn
 
 Yêu cầu **Node.js 22.12+** (hoặc 24 LTS). Để bật lõi xử lý C# trên desktop cần thêm **.NET 10 SDK** (và **Tesseract** nếu dùng OCR cục bộ).
 
