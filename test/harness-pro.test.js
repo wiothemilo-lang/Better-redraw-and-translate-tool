@@ -1,7 +1,9 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { parseSlashCommand } from "../src/agent-commands.js"
+import { SUMMARY_OPEN_TAG } from "../src/agent-context.js"
 import { RepeatToolGuard, canonicalizeArgs } from "../src/agent-guards.js"
+import { runAgentTurn, summarizeHistoryWithLlm } from "../src/agent-harness.js"
 import { loadSkillPrefs, resolveSkillPrompt, saveSkillPrefs } from "../src/agent-skills.js"
 import { createAgentTools } from "../src/agent-tools.js"
 import { clearProjectChatSession, loadProjectChatSession, saveProjectChatSession } from "../src/chat-storage.js"
@@ -156,4 +158,91 @@ test("ask_user interactive tool and bulk mutation approval gate enforce user con
   )
   assert.equal(allowed.ok, true)
   assert.equal(page.boxes[0].text, "Hello Anh hùng")
+})
+
+test("runAgentTurn integrates LLM retry, RepeatToolGuard reminder injection, and summarizeHistoryWithLlm", async (t) => {
+  const originalFetch = globalThis.fetch
+  const page = {
+    id: "p1",
+    name: "01.png",
+    image: { naturalWidth: 800, naturalHeight: 1200 },
+    boxes: [{ id: "b1", text: "Test", x: 0.1, y: 0.1, w: 0.2, h: 0.1, size: 20, font: "Arial", color: "#000000", align: "center" }],
+    unplaced: [],
+  }
+  const state = { pages: [page], presets: [], pageId: "p1", boxId: "b1", selectedBoxIds: new Set(["b1"]), queue: [] }
+  const tools = createAgentTools({
+    state,
+    byId: () => null,
+    selectedPage: () => page,
+    selectedIndex: () => 0,
+    checkpoint: () => {},
+    render: () => {},
+    textOverflowsFn: () => false,
+  })
+
+  let fetchCalls = 0
+  let sawGuardReminder = false
+  globalThis.fetch = async (_url, init) => {
+    fetchCalls++
+    const body = JSON.parse(init.body)
+    if (body.messages?.some((m) => typeof m.content === "string" && m.content.includes("gọi lặp lại đúng công cụ"))) {
+      sawGuardReminder = true
+    }
+    if (fetchCalls === 1) {
+      return { ok: false, status: 503, headers: new Headers({ "retry-after": "0" }) }
+    }
+    if (fetchCalls === 2 || fetchCalls === 3) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: null,
+              tool_calls: [{ id: `c_${fetchCalls}`, type: "function", function: { name: "list_boxes", arguments: "{}" } }],
+            },
+          }],
+        }),
+      }
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: "Đã kiểm tra xong và không lặp nữa." } }],
+      }),
+    }
+  }
+  t.after(() => { globalThis.fetch = originalFetch })
+
+  const events = []
+  const res = await runAgentTurn({
+    userMessage: "Kiểm tra khung thoại",
+    settings: { provider: "openai", baseUrl: "http://localhost:11434/v1", llmModel: "qwen2.5:7b", source: "Japanese", target: "Vietnamese" },
+    tools,
+    onEvent: (e) => events.push(e.type),
+  })
+  assert.equal(res.retriesUsed, 1)
+  assert.ok(events.includes("retry"))
+  assert.ok(events.includes("guard"))
+  assert.equal(sawGuardReminder, true)
+
+  // Verify summarizeHistoryWithLlm wraps LLM summary inside <compacted-summary>
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ choices: [{ message: { content: "- Mục tiêu: Dịch chương 1\n- Thuật ngữ: Gojo = Gojo" } }] }),
+  })
+  const longHistory = Array.from({ length: 8 }, (_, i) => ({
+    role: i % 2 === 0 ? "user" : "assistant",
+    text: `Turn ${i + 1} content`,
+  }))
+  const summarized = await summarizeHistoryWithLlm({
+    history: longHistory,
+    settings: { provider: "openai", baseUrl: "http://localhost:11434/v1", llmModel: "qwen2.5:7b" },
+    keepRecentMessages: 4,
+  })
+  assert.equal(summarized.compacted, true)
+  assert.equal(summarized.llmSummarized, true)
+  assert.ok(summarized.history[0].text.includes(SUMMARY_OPEN_TAG))
 })
