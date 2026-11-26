@@ -1,9 +1,11 @@
+import { inpaintRegion } from "./inpaint.js"
+
 const isFraction = (value) => Number.isFinite(value) && value >= 0 && value <= 1
 const inRange = (value, min, max) => Number.isFinite(value) && value >= min && value <= max
 const hexColor = /^#[\da-f]{6}$/i
 
 export function validateRetouchStroke(stroke) {
-  if (!stroke || (stroke.mode !== "paint" && stroke.mode !== "clone")) return null
+  if (!stroke || (stroke.mode !== "paint" && stroke.mode !== "clone" && stroke.mode !== "inpaint")) return null
   const opacity = stroke.opacity ?? 1
   if (!inRange(stroke.size, .00001, 200) || !inRange(opacity, .05, 1) ||
       !Array.isArray(stroke.points) || !stroke.points.length ||
@@ -14,6 +16,9 @@ export function validateRetouchStroke(stroke) {
   if (stroke.mode === "paint") {
     if (typeof stroke.color !== "string" || !hexColor.test(stroke.color)) return null
     return { mode: "paint", size: stroke.size, color: stroke.color, ...(opacity !== 1 && { opacity }), points }
+  }
+  if (stroke.mode === "inpaint") {
+    return { mode: "inpaint", size: stroke.size, ...(opacity !== 1 && { opacity }), points }
   }
   if (!inRange(stroke.offsetX, -1, 1) || !inRange(stroke.offsetY, -1, 1)) return null
   return {
@@ -118,6 +123,60 @@ function renderRetouchStrokes(context, page, width, height) {
       context.save()
       context.globalAlpha = opacity
       context.drawImage(stamp, left, top)
+      context.restore()
+      painted = true
+      continue
+    }
+    if (stroke.mode === "inpaint" && page.image) {
+      const radius = Math.ceil(lineWidth / 2) + 2
+      const margin = Math.max(18, Math.min(36, Math.ceil(lineWidth)))
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      for (const point of stroke.points) {
+        const px = point.x * width
+        const py = point.y * height
+        if (px < minX) minX = px
+        if (py < minY) minY = py
+        if (px > maxX) maxX = px
+        if (py > maxY) maxY = py
+      }
+      const left = Math.max(0, Math.floor(minX - radius - margin))
+      const top = Math.max(0, Math.floor(minY - radius - margin))
+      const right = Math.min(width, Math.ceil(maxX + radius + margin))
+      const bottom = Math.min(height, Math.ceil(maxY + radius + margin))
+      const bw = right - left
+      const bh = bottom - top
+      if (bw <= 2 || bh <= 2) continue
+
+      const maskCanvas = document.createElement("canvas")
+      maskCanvas.width = bw
+      maskCanvas.height = bh
+      const maskCtx = maskCanvas.getContext("2d", { willReadFrequently: true })
+      maskCtx.strokeStyle = "#fff"
+      maskCtx.lineWidth = lineWidth
+      maskCtx.lineCap = "round"
+      maskCtx.lineJoin = "round"
+      drawStrokePath(maskCtx, stroke.points, width, height, left, top)
+      const maskRgba = maskCtx.getImageData(0, 0, bw, bh).data
+      const mask = new Uint8Array(bw * bh)
+      for (let i = 0; i < mask.length; i++) {
+        if (maskRgba[i * 4 + 3] >= 32) mask[i] = 1
+      }
+
+      const patchCanvas = document.createElement("canvas")
+      patchCanvas.width = bw
+      patchCanvas.height = bh
+      const patchCtx = patchCanvas.getContext("2d", { willReadFrequently: true })
+      patchCtx.drawImage(page.image, -left, -top)
+      if (context.canvas) patchCtx.drawImage(context.canvas, -left, -top)
+      const imageData = patchCtx.getImageData(0, 0, bw, bh)
+      if (!inpaintRegion(imageData.data, bw, bh, mask)) continue
+      for (let i = 0; i < mask.length; i++) {
+        imageData.data[i * 4 + 3] = mask[i] ? maskRgba[i * 4 + 3] : 0
+      }
+      patchCtx.putImageData(imageData, 0, 0)
+      context.save()
+      context.globalAlpha = opacity
+      context.drawImage(patchCanvas, left, top)
       context.restore()
       painted = true
     }

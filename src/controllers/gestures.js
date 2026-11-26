@@ -116,6 +116,26 @@ export function setupGestures({
     setZoom(cur * factor)
   }, { passive: false })
 
+  function drawInpaintPreview(stroke) {
+    const canvas = byId("cleanup-overlay")
+    canvas.width = pageCanvas.width
+    canvas.height = pageCanvas.height
+    const ctx = canvas.getContext("2d")
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.strokeStyle = "#0284c7"
+    ctx.lineWidth = Math.max(1, stroke.size * Math.min(canvas.width, canvas.height))
+    ctx.lineCap = "round"
+    ctx.lineJoin = "round"
+    ctx.beginPath()
+    const first = stroke.points[0]
+    ctx.moveTo(first.x * canvas.width, first.y * canvas.height)
+    for (let i = 1; i < stroke.points.length; i++) {
+      ctx.lineTo(stroke.points[i].x * canvas.width, stroke.points[i].y * canvas.height)
+    }
+    if (stroke.points.length === 1) ctx.lineTo(first.x * canvas.width + .01, first.y * canvas.height)
+    ctx.stroke()
+  }
+
   function schedulePaint() {
     pendingPaint ??= requestAnimationFrame(() => {
       pendingPaint = undefined
@@ -184,8 +204,8 @@ export function setupGestures({
       return
     }
 
-    // Paint & Clone Stamp retouch tools.
-    if (tool === "paint" || tool === "clone") {
+    // Paint, Clone Stamp & Smart Inpaint retouch tools.
+    if (tool === "paint" || tool === "clone" || tool === "inpaint") {
       event.preventDefault()
       if (tool === "clone" && event.altKey) {
         state.cloneSource = origin
@@ -204,17 +224,25 @@ export function setupGestures({
       const minDim = Math.min(page.image.naturalWidth, page.image.naturalHeight)
       const stroke = tool === "paint"
         ? { mode: "paint", size: size / minDim, color: byId("paint-color").value, ...(opacity !== 1 && { opacity }), points: [origin] }
-        : {
-          mode: "clone", size: size / minDim,
-          offsetX: clamp(state.cloneSource.x - origin.x, -1, 1),
-          offsetY: clamp(state.cloneSource.y - origin.y, -1, 1),
-          ...(opacity !== 1 && { opacity }),
-          points: [origin],
-        }
-      page.retouchStrokes ??= []
-      page.retouchStrokes.push(stroke)
-      gesture = { kind: "retouch", pointer: event.pointerId, stroke, before }
-      paintPreview(page)
+        : tool === "inpaint"
+          ? { mode: "inpaint", size: size / minDim, ...(opacity !== 1 && { opacity }), points: [origin] }
+          : {
+            mode: "clone", size: size / minDim,
+            offsetX: clamp(state.cloneSource.x - origin.x, -1, 1),
+            offsetY: clamp(state.cloneSource.y - origin.y, -1, 1),
+            ...(opacity !== 1 && { opacity }),
+            points: [origin],
+          }
+      if (tool === "inpaint") {
+        // Draw fast overlay preview during drag, then commit inpaint reconstruction on pointerup.
+        gesture = { kind: "inpaint-preview", pointer: event.pointerId, stroke, before }
+        drawInpaintPreview(stroke)
+      } else {
+        page.retouchStrokes ??= []
+        page.retouchStrokes.push(stroke)
+        gesture = { kind: "retouch", pointer: event.pointerId, stroke, before }
+        paintPreview(page)
+      }
       return
     }
 
@@ -325,6 +353,11 @@ export function setupGestures({
       return
     }
     const cursor = point(event)
+    if (gesture.kind === "inpaint-preview") {
+      gesture.stroke.points.push(cursor)
+      drawInpaintPreview(gesture.stroke)
+      return
+    }
     if (gesture.kind === "retouch") {
       gesture.stroke.points.push(cursor)
       schedulePaint()
@@ -415,6 +448,17 @@ export function setupGestures({
     clearGuides()
     if (completed.kind === "pan") {
       stage.classList.remove("dragging-pan")
+      return
+    }
+    if (completed.kind === "inpaint-preview") {
+      const page = selectedPage()
+      if (page) {
+        page.retouchStrokes ??= []
+        page.retouchStrokes.push(completed.stroke)
+        checkpoint(completed.before)
+      }
+      render()
+      status("Đã tẩy chữ và tái tạo nền bằng Inpaint.")
       return
     }
     if (completed.kind === "retouch") {

@@ -10,9 +10,9 @@ Công cụ biên tập, xóa chữ (redraw), dịch thuật và dàn thoại tru
 |---|---|---|
 | Biên tập khung thoại, co giãn 8 tay cầm (kể cả khung xoay), xoay 15°, chọn nhiều khung & căn hàng/chia đều, hút lưới tự động, chấm bong bóng tự động, zoom 25%–400%, kéo bàn vẽ, so sánh ảnh gốc | Có | Có |
 | Dàn chữ nâng cao (viền chữ, đổ bóng, đậm/nghiêng/IN HOA/chữ dọc, giãn dòng, hình nền bầu dục/bo góc, tự khớp cỡ chữ, nạp & tự lưu font cục bộ IndexedDB) | Có | Có |
-| Cọ retouch thủ công (Hút màu, Cọ vẽ che chữ, Cọ sao chép nền Clone Stamp, hoàn tác nét cọ gần nhất, cache lớp retouch) & mặt nạ vùng xóa | Có | Có (mặt nạ C# tăng tốc) |
-| Xóa chữ tự động (Redraw) | Nền giấy sáng trơn trên Canvas | Nền trơn, nền chuyển sắc, screentone lặp (chu kỳ ≤ 32 px, kể cả screentone chuyển sáng) và bảo vệ nét vẽ cắt biên |
-| Dịch & ghép kịch bản bằng Gemini API (OCR → dịch theo mã + ngữ cảnh + thuật ngữ) | Có | Có |
+| Cọ retouch thủ công (Hút màu, Cọ vẽ che chữ, Cọ sao chép nền Clone Stamp, **Cọ tẩy chữ thông minh Inpaint**, hoàn tác nét cọ gần nhất, cache lớp retouch) & mặt nạ vùng xóa | Có | Có (mặt nạ C# tăng tốc) |
+| Xóa chữ tự động (Redraw) | Nền giấy sáng trơn trên Canvas + Cọ Inpaint tái tạo nền phức tạp | Nền trơn, nền chuyển sắc, screentone lặp (chu kỳ ≤ 32 px, kể cả screentone chuyển sáng), bảo vệ nét vẽ cắt biên + Cọ Inpaint |
+| Dịch & ghép kịch bản bằng **Gemini API** hoặc **OpenAI-compatible / Local LLM** (Ollama, LM Studio, Hy-MT2, OpenRouter) + **Dịch các khung chữ đang có** | Có | Có (cho phép kết nối localhost) |
 | OCR cục bộ offline (Tesseract, xoay 0/90/180/270°, chữ dọc Nhật `jpn_vert`, gom dòng & cửa sổ duyệt kết quả có độ tin cậy) | — | Có |
 | Tìm & thay thế toàn chương, xuất kịch bản (`TXT` / `CSV` / `JSON`), rà trước khi xuất | Có | Có |
 | Lưu / mở dự án `.khungthoai` & tự lưu phục hồi | Tự lưu IndexedDB trên trình duyệt | Dự án gần đây + tối đa 10 mốc tự lưu theo từng dự án, giữ bản `.bak`, báo trạng thái chưa lưu |
@@ -78,7 +78,8 @@ Mở `Khung-Thoai` (Linux) hoặc `Khung-Thoai.exe` (Windows). Các lệnh đón
   - **Hút màu (`eyedropper`)**: Bấm vào ảnh để lấy mã màu RGB chính xác cho cọ vẽ (`Shift + bấm` để đổi màu chữ khung đang chọn).
   - **Cọ vẽ che chữ (`paint`)**: Tô màu và độ đục tùy chỉnh trực tiếp lên lớp redraw.
   - **Cọ sao chép nền (`clone`)**: Giữ `Alt + bấm` vào vùng nền/screentone sạch để đặt điểm nguồn, sau đó kéo tô lên chữ cần che.
-  - Bấm **Hoàn tác nét cọ** để bỏ nét cọ gần nhất hoặc **Xóa nét vẽ tay** để xóa toàn bộ nét paint/clone của trang hiện tại. Lớp nét retouch được cache offscreen để kéo khung mượt mà, lưu trong `.khungthoai` và gộp tự động vào lớp `Nền đã xóa chữ` khi xuất PNG/PSD/ZIP.
+  - **Cọ tẩy chữ thông minh (`inpaint`)**: Tô trực tiếp lên chữ nằm trên nền tranh phức tạp không lặp (áo, kính màu, tóc, phong cảnh); công cụ tự động tái tạo nền bằng Fast-Marching directional diffusion kết hợp khớp mẫu cục bộ (exemplar) mà không chạm bất kỳ điểm ảnh nào ngoài nét cọ.
+  - Bấm **Hoàn tác nét cọ** để bỏ nét cọ gần nhất hoặc **Xóa nét vẽ tay** để xóa toàn bộ nét retouch của trang hiện tại. Lớp nét retouch được cache offscreen để kéo khung mượt mà, lưu gọn dạng vector trong `.khungthoai` và gộp tự động vào lớp `Nền đã xóa chữ` khi xuất PNG/PSD/ZIP.
 - Dùng checkbox **Hiện redraw** / **Hiện chữ** để kiểm tra từng lớp (không làm mất lớp khi xuất).
 
 ### 4. Tìm & thay thế, hoàn tác và phím tắt
@@ -103,8 +104,10 @@ Mở `Khung-Thoai` (Linux) hoặc `Khung-Thoai.exe` (Windows). Các lệnh đón
 | `Enter` (khi focus bàn vẽ) | Đặt khung chữ ở giữa trang |
 | `?` | Mở bảng phím tắt |
 
-### 5. Dịch ảnh bằng Gemini & OCR cục bộ
-- **Gemini API**: Mở **Dịch ảnh bằng Gemini**, nhập API key, chọn model/ngôn ngữ, thêm ghi chú xưng hô và **Bảng thuật ngữ** (`từ gốc = từ dịch`), sau đó bấm **Dịch trang đang mở**, **Dịch cả lượt**, **Tiếp tục dịch chương**, **Dừng dịch** hoặc **Ghép nghĩa kịch bản trang này**. Khóa API chỉ giữ trong bộ nhớ phiên hiện tại và không lưu vào tệp dự án. [Tài liệu Gemini](https://ai.google.dev/api/generate-content)
+### 5. Dịch ảnh & khung thoại bằng Gemini / Local LLM (Ollama, LM Studio, Hy-MT2) & OCR cục bộ
+- **Gemini API & OpenAI-compatible / Local LLM**: Mở **Dịch ảnh & LLM (Gemini / Local)**, chọn **Gemini API** hoặc **OpenAI-compatible / Local LLM** (có cấu hình sẵn cho **Ollama** `http://localhost:11434/v1`, **LM Studio** `http://localhost:1234/v1`, **OpenRouter**, **OpenAI** hoặc server **Hy-MT2 Manga / vLLM** cục bộ; chỉ cho phép HTTPS hoặc HTTP loopback `localhost`/`127.0.0.1` và không bao giờ lưu API key vào `.khungthoai`).
+  - **Dịch các khung chữ đang có**: Dịch trực tiếp các khung đã OCR cục bộ bằng Tesseract (hoặc tạo thủ công) mà **không cần model Vision** — tương thích hoàn toàn với các model dịch chữ thuần như Hy-MT2 Manga, Qwen2.5, Llama, Gemma.
+  - **Dịch trang đang mở / Dịch cả lượt / Tiếp tục dịch chương / Ghép nghĩa kịch bản**: Hỗ trợ ngữ cảnh qua trang và **Bảng thuật ngữ** (`từ gốc = từ dịch`). [Tài liệu Gemini](https://ai.google.dev/api/generate-content)
 - **OCR trên máy (Desktop)**: Sau khi build lõi C# và cài Tesseract cùng gói ngôn ngữ, dùng mục **OCR trên máy** để tiền xử lý (phóng lớn bilinear 1×–3×, giảm nhiễu, xoay 0/90/180/270°), chọn chế độ chữ dọc Nhật (`jpn_vert`), gom dòng gần nhau và kiểm tra/chỉnh sửa trong cửa sổ duyệt kết quả kèm ảnh cắt và độ tin cậy trước khi **Đặt lên trang**. Xem chi tiết cấu hình trong [native/README.md](native/README.md).
 
 ### 6. Dự án `.khungthoai`, tự lưu và xuất tệp

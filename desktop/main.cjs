@@ -11,7 +11,7 @@ const files = path.resolve(__dirname, "../dist")
 const policy = [
   "default-src 'self'",
   "img-src 'self' https: blob: data:",
-  "connect-src 'self' https:",
+  "connect-src 'self' https: http://localhost:* http://127.0.0.1:*",
   "style-src 'self' 'unsafe-inline'",
   "object-src 'none'",
   "base-uri 'none'",

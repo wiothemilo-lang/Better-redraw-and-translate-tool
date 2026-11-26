@@ -138,6 +138,7 @@ test("version 2 persists rich typography styles, shadow, custom font names and r
   project.pages[0].retouchStrokes = [
     { mode: "paint", size: .04, color: "#eeeeee", opacity: .8, points: [{ x: .1, y: .1 }, { x: .2, y: .2 }] },
     { mode: "clone", size: .06, offsetX: -.05, offsetY: .05, points: [{ x: .4, y: .4 }] },
+    { mode: "inpaint", size: .05, points: [{ x: .5, y: .5 }, { x: .55, y: .52 }] },
   ]
   const opened = await readProject(writeProject(project))
   assert.deepEqual(opened.pages[0].boxes[0], project.pages[0].boxes[0])

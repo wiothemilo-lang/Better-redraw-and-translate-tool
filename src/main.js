@@ -262,7 +262,7 @@ function syncToolControls() {
   const page = selectedPage()
   const hasRetouch = Boolean(page?.retouchStrokes?.length)
   byId("paint-color-field").hidden = tool !== "paint"
-  byId("paint-opacity-field").hidden = tool !== "paint" && tool !== "clone"
+  byId("paint-opacity-field").hidden = tool !== "paint" && tool !== "clone" && tool !== "inpaint"
   byId("undo-retouch").hidden = !hasRetouch
   byId("clear-retouch").hidden = !hasRetouch
   byId("undo-retouch").disabled = projectBusy() || !hasRetouch
@@ -281,6 +281,7 @@ function renderPages() {
   byId("next-page").disabled = current < 0 || current >= count - 1
   byId("apply-script").disabled = current < 0 || projectBusy()
   byId("export-script").disabled = !count || projectBusy()
+  byId("translate-boxes").disabled = current < 0 || !(selectedPage()?.boxes.length) || projectBusy()
   byId("translate").disabled = current < 0 || projectBusy()
   byId("align-script").disabled = current < 0 || projectBusy()
   byId("translate-all").disabled = !count || projectBusy()
@@ -543,6 +544,7 @@ byId("cleanup-tool").onchange = () => {
   else if (tool === "eyedropper") status("Bấm lên ảnh để hút màu cho cọ vẽ (Shift+bấm để đổi màu chữ).")
   else if (tool === "paint") status("Kéo cọ trên ảnh để vẽ che chữ theo màu cọ đã chọn.")
   else if (tool === "clone") status("Giữ Alt + bấm vùng nền mẫu, sau đó kéo cọ để sao chép nền che chữ.")
+  else if (tool === "inpaint") status("Tô cọ lên chữ trên nền tranh phức tạp để tự động tái tạo nền phía sau.")
   else if (tool !== "text") status("Chọn khung thoại rồi khoanh vùng hoặc vẽ cọ trên ảnh.")
 }
 byId("show-cleanup").onchange = renderCanvas
@@ -580,6 +582,7 @@ function renderInspector() {
   renderPresets()
   syncToolControls()
   byId("autofit-page").disabled = !boxes.length || projectBusy()
+  byId("translate-boxes").disabled = !boxes.length || projectBusy()
   byId("cleanup-inspector").hidden = !box
   byId("reset-cleanup").disabled = projectBusy()
   byId("box-count").textContent = boxes.length
@@ -1119,7 +1122,7 @@ const gestures = setupGestures({
   commitLiveForm: commitLiveFormCheckpoint, selectBox, toggleSelectBox,
   addBox, freezeCleanup, rectStyle, paintPreview, renderCleanupOverlay, changePage,
 })
-const translation = setupTranslation({ ...shared, pageForScript, applyTranslation })
+const translation = setupTranslation({ ...shared, pageForScript, applyTranslation, onSettingsChange: syncTranslationActions })
 const projects = setupProjects({
   ...shared, projectSettings, defaultProjectSettings, history, openImage,
   selectPage, selectedIndex, updateFitLabel, releaseUnusedImages,

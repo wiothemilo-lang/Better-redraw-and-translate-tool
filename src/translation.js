@@ -1,5 +1,9 @@
 export function translationSignature(settings) {
-  return JSON.stringify([settings.source, settings.target, settings.notes, settings.direction, settings.model, settings.glossary])
+  const base = [settings.source, settings.target, settings.notes, settings.direction, settings.model, settings.glossary]
+  if (settings.provider && settings.provider !== "gemini") {
+    base.push(settings.provider, settings.baseUrl ?? "", settings.llmModel ?? "")
+  }
+  return JSON.stringify(base)
 }
 
 export function remainingTranslations(pages, settings) {

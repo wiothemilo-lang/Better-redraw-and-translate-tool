@@ -77,17 +77,45 @@
           <button type="button" id="export-script" class="button">Xuất kịch bản</button>
         </div>
         <details class="translation">
-          <summary>Dịch ảnh bằng Gemini</summary>
-          <label class="field" for="gemini-key">Khóa API
-            <input id="gemini-key" type="password" autocomplete="off">
-          </label>
-          <label class="field" for="gemini-model">Model
-            <select id="gemini-model">
-              <option value="auto">Tự động</option>
-              <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
-              <option value="gemini-3.5-flash-lite">3.5 Flash-Lite</option>
+          <summary>Dịch ảnh &amp; LLM (Gemini / Local)</summary>
+          <label class="field" for="translation-provider">Nguồn dịch
+            <select id="translation-provider">
+              <option value="gemini">Gemini API</option>
+              <option value="openai">OpenAI-compatible / Local LLM</option>
             </select>
           </label>
+          <div id="gemini-fields">
+            <label class="field" for="gemini-key">Khóa API
+              <input id="gemini-key" type="password" autocomplete="off">
+            </label>
+            <label class="field" for="gemini-model">Model
+              <select id="gemini-model">
+                <option value="auto">Tự động</option>
+                <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
+                <option value="gemini-3.5-flash-lite">3.5 Flash-Lite</option>
+              </select>
+            </label>
+          </div>
+          <div id="openai-fields" hidden>
+            <label class="field" for="llm-preset">Cấu hình nhanh
+              <select id="llm-preset">
+                <option value="ollama">Ollama cục bộ (localhost:11434)</option>
+                <option value="lmstudio">LM Studio (localhost:1234)</option>
+                <option value="openrouter">OpenRouter (HTTPS)</option>
+                <option value="openai">OpenAI API (HTTPS)</option>
+                <option value="custom">Tùy chỉnh (Hy-MT2 / vLLM / khác)</option>
+              </select>
+            </label>
+            <label class="field" for="llm-base-url">Base URL
+              <input id="llm-base-url" type="url" value="http://localhost:11434/v1" placeholder="http://localhost:11434/v1">
+            </label>
+            <label class="field" for="llm-model">Tên Model
+              <input id="llm-model" type="text" placeholder="qwen2.5:7b, hy-mt2-manga, gpt-4o-mini">
+            </label>
+            <label class="field" for="llm-key">API Key (trống nếu chạy cục bộ)
+              <input id="llm-key" type="password" autocomplete="off">
+            </label>
+          </div>
           <label class="field" for="source-language">Ngôn ngữ gốc
             <select id="source-language">
               <option value="Japanese">Tiếng Nhật</option><option value="Korean">Tiếng Hàn</option>
@@ -105,6 +133,7 @@
           <label class="field" for="translation-glossary">Bảng thuật ngữ
             <textarea id="translation-glossary" rows="3" placeholder="Tên gốc = tên dịch, mỗi mục một dòng"></textarea>
           </label>
+          <button type="button" class="button full" id="translate-boxes">Dịch các khung chữ đang có</button>
           <button type="button" class="button full" id="translate">Dịch trang đang mở</button>
           <button type="button" class="button full" id="translate-all">Dịch cả lượt</button>
           <button type="button" class="button full" id="resume-translation">Tiếp tục dịch chương</button>
@@ -166,6 +195,7 @@
             <option value="restore">Cọ thêm vùng xóa</option>
             <option value="paint">Cọ vẽ che chữ</option>
             <option value="clone">Cọ sao chép nền (Alt+bấm)</option>
+            <option value="inpaint">Cọ tẩy chữ thông minh (Inpaint)</option>
             <option value="eyedropper">Hút màu</option>
           </select>
         </label>
