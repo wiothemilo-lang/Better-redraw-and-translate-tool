@@ -6,6 +6,7 @@ import {
   validateEndpointUrl,
 } from "../openai-compat.js"
 import { remainingTranslations, translationSignature } from "../translation.js"
+import { loadSkillPrefs, resolveSkillPrompt } from "../agent-skills.js"
 import { groupDialogue } from "../io.js"
 
 const llmStorageKey = "khung-thoai-llm-config"
@@ -111,14 +112,18 @@ export function setupTranslation({
   }
 
   function prepareCredentials(settings) {
-    if (settings.provider === "openai") {
-      validateEndpointUrl(settings.baseUrl)
-      if (!settings.llmModel) throw new Error("Hãy nhập tên Model LLM.")
-      return { ...settings, apiKey: byId("llm-key").value.trim() }
+    const skillPrefs = loadSkillPrefs()
+    const skillPrompt = resolveSkillPrompt(skillPrefs.skillId, skillPrefs.customInstructions)
+    const combinedNotes = [settings.notes, skillPrompt].filter(Boolean).join("\n\n")
+    const enriched = combinedNotes ? { ...settings, notes: combinedNotes } : settings
+    if (enriched.provider === "openai") {
+      validateEndpointUrl(enriched.baseUrl)
+      if (!enriched.llmModel) throw new Error("Hãy nhập tên Model LLM.")
+      return { ...enriched, apiKey: byId("llm-key").value.trim() }
     }
     const key = byId("gemini-key").value.trim()
     if (!key) throw new Error("Hãy nhập khóa API Gemini.")
-    return { ...settings, key }
+    return { ...enriched, key }
   }
 
   async function processPages(pages, read, action, kind = "translate") {

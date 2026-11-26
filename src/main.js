@@ -941,6 +941,11 @@ function liveUpdateForm() {
   if (outline) rectStyle(outline, box)
   paintPreview(page)
 }
+byId("box-warp").addEventListener("change", () => {
+  if (byId("box-warp").value !== "none" && Number(byId("box-warp-amount").value) === 0) {
+    byId("box-warp-amount").value = "20"
+  }
+})
 form.addEventListener("input", liveUpdateForm)
 form.addEventListener("change", liveUpdateForm)
 
