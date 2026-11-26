@@ -204,8 +204,8 @@ export function setupGestures({
       return
     }
 
-    // Paint, Clone Stamp & Smart Inpaint retouch tools.
-    if (tool === "paint" || tool === "clone" || tool === "inpaint") {
+    // Paint, Clone Stamp, Smart Inpaint & Retouch Eraser tools.
+    if (tool === "paint" || tool === "clone" || tool === "inpaint" || tool === "retouch-erase") {
       event.preventDefault()
       if (tool === "clone" && event.altKey) {
         state.cloneSource = origin
@@ -226,13 +226,15 @@ export function setupGestures({
         ? { mode: "paint", size: size / minDim, color: byId("paint-color").value, ...(opacity !== 1 && { opacity }), points: [origin] }
         : tool === "inpaint"
           ? { mode: "inpaint", size: size / minDim, ...(opacity !== 1 && { opacity }), points: [origin] }
-          : {
-            mode: "clone", size: size / minDim,
-            offsetX: clamp(state.cloneSource.x - origin.x, -1, 1),
-            offsetY: clamp(state.cloneSource.y - origin.y, -1, 1),
-            ...(opacity !== 1 && { opacity }),
-            points: [origin],
-          }
+          : tool === "retouch-erase"
+            ? { mode: "erase", size: size / minDim, ...(opacity !== 1 && { opacity }), points: [origin] }
+            : {
+              mode: "clone", size: size / minDim,
+              offsetX: clamp(state.cloneSource.x - origin.x, -1, 1),
+              offsetY: clamp(state.cloneSource.y - origin.y, -1, 1),
+              ...(opacity !== 1 && { opacity }),
+              points: [origin],
+            }
       if (tool === "inpaint") {
         // Draw fast overlay preview during drag, then commit inpaint reconstruction on pointerup.
         gesture = { kind: "inpaint-preview", pointer: event.pointerId, stroke, before }

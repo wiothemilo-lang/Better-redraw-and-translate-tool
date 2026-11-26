@@ -33,6 +33,7 @@ export function setupProjects({
   registerFontName,
   renderFontOptions,
   notify,
+  onProjectSwitch,
 }) {
   const projectFile = byId("project-file")
   let projectName
@@ -192,6 +193,7 @@ export function setupProjects({
       })
       projectName = filenameStem(file.name)
       selectPage(loaded[project.currentPage])
+      onProjectSwitch?.()
       status(`Đã mở dự án với ${loaded.length} trang.`)
     } catch (error) {
       status("Không mở được dự án. " + error.message, true)
@@ -310,6 +312,7 @@ export function setupProjects({
     selectPage()
     releaseUnusedImages()
     refreshDirty()
+    onProjectSwitch?.()
   }
 
   async function refreshRecovery() {

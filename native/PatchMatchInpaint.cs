@@ -48,6 +48,7 @@ internal static class PatchMatchInpaint
 
         var patchRadius = Math.Clamp((int?)options["patchRadius"] ?? 3, 1, 5);
         var colorAdapt = (bool?)options["colorAdapt"] ?? true;
+        var seamless = (bool?)options["seamless"] ?? true;
         var seed = (ulong)((long?)options["seed"] ?? 1L);
 
         var output = new byte[rgbaLen];
@@ -97,8 +98,13 @@ internal static class PatchMatchInpaint
             }
         }
 
+        var originalRgb = seamless ? (float[])rgb.Clone() : null;
         var localHoleBox = new Box(hx0 - win.X0, hy0 - win.Y0, hx1 - win.X0, hy1 - win.Y0);
         Complete(ww, wh, rgb, hole, localHoleBox, patchRadius, colorAdapt, seed);
+        if (seamless && originalRgb is not null)
+        {
+            PoissonBlend.SeamlessInpaintBlendRgb(ww, wh, rgb, originalRgb, hole);
+        }
 
         // Copy back ONLY masked pixels so unmasked artwork is preserved bit-for-bit.
         for (var y = 0; y < wh; y++)

@@ -8,7 +8,7 @@ const inRange = (value, min, max) => Number.isFinite(value) && value >= min && v
 const hexColor = /^#[\da-f]{6}$/i
 
 export function validateRetouchStroke(stroke) {
-  if (!stroke || (stroke.mode !== "paint" && stroke.mode !== "clone" && stroke.mode !== "inpaint")) return null
+  if (!stroke || !["paint", "clone", "inpaint", "erase"].includes(stroke.mode)) return null
   const opacity = stroke.opacity ?? 1
   if (!inRange(stroke.size, .00001, 200) || !inRange(opacity, .05, 1) ||
       !Array.isArray(stroke.points) || !stroke.points.length ||
@@ -20,8 +20,8 @@ export function validateRetouchStroke(stroke) {
     if (typeof stroke.color !== "string" || !hexColor.test(stroke.color)) return null
     return { mode: "paint", size: stroke.size, color: stroke.color, ...(opacity !== 1 && { opacity }), points }
   }
-  if (stroke.mode === "inpaint") {
-    return { mode: "inpaint", size: stroke.size, ...(opacity !== 1 && { opacity }), points }
+  if (stroke.mode === "inpaint" || stroke.mode === "erase") {
+    return { mode: stroke.mode, size: stroke.size, ...(opacity !== 1 && { opacity }), points }
   }
   if (!inRange(stroke.offsetX, -1, 1) || !inRange(stroke.offsetY, -1, 1)) return null
   return {
@@ -79,6 +79,18 @@ function renderRetouchStrokes(context, page, width, height) {
     if (!stroke.points?.length) continue
     const lineWidth = Math.max(1, stroke.size * minDimension)
     const opacity = stroke.opacity ?? 1
+    if (stroke.mode === "erase") {
+      context.save()
+      context.globalCompositeOperation = "destination-out"
+      context.globalAlpha = opacity
+      context.strokeStyle = "#000"
+      context.lineWidth = lineWidth
+      context.lineCap = "round"
+      context.lineJoin = "round"
+      drawStrokePath(context, stroke.points, width, height)
+      context.restore()
+      continue
+    }
     if (stroke.mode === "paint") {
       context.save()
       context.globalAlpha = opacity

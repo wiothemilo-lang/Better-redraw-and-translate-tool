@@ -595,3 +595,32 @@ dialog::backdrop { background: #16352dae; }
   margin-bottom: 12px;
 }
 .update-assets .button { justify-content: space-between; display: flex; font-size: .78rem; }
+
+/* Interactive ask_user & bulk approval cards */
+.chat-ask-card, .chat-approval-card {
+  border: 1px solid #8eb596;
+  border-radius: 9px;
+  background: #f5fbf3;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chat-approval-card {
+  border-color: #dfa353;
+  background: #fffaf2;
+}
+.chat-ask-question { margin: 0; font-size: .83rem; color: var(--ink); line-height: 1.45; }
+.chat-ask-options { display: flex; flex-direction: column; gap: 5px; }
+.chat-ask-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 2px;
+  padding: 7px 10px;
+  background: white;
+}
+.chat-ask-option small { font-weight: 400; color: var(--quiet); font-size: .74rem; }
+.chat-ask-custom { display: flex; gap: 6px; }
+.chat-ask-custom input { flex: 1; min-width: 0; }

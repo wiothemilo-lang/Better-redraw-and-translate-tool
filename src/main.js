@@ -9,6 +9,7 @@ import { cleanupRectangle, paintCleanupMask } from "./cleanup.js"
 import { remainingTranslations, translationLabel } from "./translation.js"
 import { allFonts, loadCustomFont, registerFontName, restoreCustomFonts } from "./fonts.js"
 import { alignBoxes, distributeBoxes, duplicateBox, nudgeBox, reorderBox } from "./tools.js"
+import { cleanRawPageImage } from "./raw-cleanup.js"
 import { createNotificationCenter } from "./notifications.js"
 import {
   APP_VERSION,
@@ -274,7 +275,8 @@ function syncToolControls() {
   const page = selectedPage()
   const hasRetouch = Boolean(page?.retouchStrokes?.length)
   byId("paint-color-field").hidden = tool !== "paint"
-  byId("paint-opacity-field").hidden = tool !== "paint" && tool !== "clone" && tool !== "inpaint"
+  byId("paint-opacity-field").hidden = !["paint", "clone", "inpaint", "retouch-erase"].includes(tool)
+  byId("clean-raw").disabled = projectBusy() || !page
   byId("undo-retouch").hidden = !hasRetouch
   byId("clear-retouch").hidden = !hasRetouch
   byId("undo-retouch").disabled = projectBusy() || !hasRetouch
@@ -498,6 +500,7 @@ byId("apply-preset").onclick = () => {
   checkpoint()
   const defaults = {
     bold: false, italic: false, uppercase: false, vertical: false,
+    bubbleFit: false, warp: "none", warpAmount: 0,
     lineHeight: 1.15, strokeWidth: 0, strokeColor: "#ffffff",
     shadowBlur: 0, shadowColor: "#000000",
     fillColor: "#ffffff", fillShape: "rect",
@@ -546,6 +549,37 @@ byId("clear-retouch").onclick = () => {
   status("Đã xóa toàn bộ nét vẽ tay trên trang.")
 }
 
+byId("clean-raw").onclick = async () => {
+  const page = selectedPage()
+  if (!page || projectBusy()) return
+  commitLiveFormCheckpoint()
+  state.processingNative = true
+  renderPages()
+  status("Đang làm sạch ảnh raw (cân bằng trắng, khử nhiễu, tăng sắc nét)…")
+  try {
+    const { file, engine } = await cleanRawPageImage(page, { strength: 0.7, denoise: true, sharpen: true })
+    const decoded = await openImage(file)
+    checkpoint()
+    page.file = decoded.file
+    page.image = decoded.image
+    page.url = decoded.url
+    render()
+    status(`Đã làm sạch ảnh raw (${engine === "native-cs" ? "C#" : "JS"}). Nhấn Ctrl+Z nếu muốn hoàn tác.`)
+    notify({
+      kind: "success",
+      title: "Đã làm sạch ảnh raw",
+      message: `Trang ${page.name} đã được xử lý cân bằng giấy & khử nhiễu (${engine === "native-cs" ? "lõi C#" : "JS"}).`,
+      key: `clean-raw-${page.id}`,
+      actions: [{ label: "Hoàn tác", onClick: () => restoreHistory("undo") }],
+    })
+  } catch (error) {
+    status("Không thể làm sạch ảnh raw. " + error.message, true)
+  } finally {
+    state.processingNative = false
+    render()
+  }
+}
+
 byId("cleanup-tool").onchange = () => {
   state.placing = false
   syncToolControls()
@@ -556,7 +590,8 @@ byId("cleanup-tool").onchange = () => {
   else if (tool === "eyedropper") status("Bấm lên ảnh để hút màu cho cọ vẽ (Shift+bấm để đổi màu chữ).")
   else if (tool === "paint") status("Kéo cọ trên ảnh để vẽ che chữ theo màu cọ đã chọn.")
   else if (tool === "clone") status("Giữ Alt + bấm vùng nền mẫu, sau đó kéo cọ để sao chép nền che chữ.")
-  else if (tool === "inpaint") status("Tô cọ lên chữ trên nền tranh phức tạp để tự động tái tạo nền phía sau.")
+  else if (tool === "inpaint") status("Tô cọ lên chữ trên nền tranh phức tạp để tự động tái tạo nền phía sau (PatchMatch + Poisson).")
+  else if (tool === "retouch-erase") status("Tô lên vùng đã vẽ/tẩy để xóa cục bộ nét redraw và lộ lại ảnh gốc.")
   else if (tool !== "text") status("Chọn khung thoại rồi khoanh vùng hoặc vẽ cọ trên ảnh.")
 }
 byId("show-cleanup").onchange = renderCanvas
@@ -626,6 +661,9 @@ function renderInspector() {
     byId("box-italic").checked = Boolean(box.italic)
     byId("box-uppercase").checked = Boolean(box.uppercase)
     byId("box-vertical").checked = Boolean(box.vertical)
+    byId("box-bubble-fit").checked = Boolean(box.bubbleFit)
+    byId("box-warp").value = box.warp ?? "none"
+    byId("box-warp-amount").value = box.warpAmount ?? 0
     byId("box-line-height").value = box.lineHeight ?? 1.15
     byId("box-stroke-width").value = box.strokeWidth ?? 0
     byId("box-stroke-color").value = box.strokeColor ?? "#ffffff"
@@ -877,6 +915,9 @@ function applyFormToBox(box, { requireText = false } = {}) {
   box.italic = byId("box-italic").checked
   box.uppercase = byId("box-uppercase").checked
   box.vertical = byId("box-vertical").checked
+  box.bubbleFit = byId("box-bubble-fit").checked
+  box.warp = byId("box-warp").value
+  box.warpAmount = clamp(Number(byId("box-warp-amount").value) || 0, -50, 50)
   box.strokeWidth = clamp(Number(byId("box-stroke-width").value) || 0, 0, 24)
   box.strokeColor = byId("box-stroke-color").value
   box.shadowBlur = clamp(Number(byId("box-shadow-blur").value) || 0, 0, 24)
@@ -1324,6 +1365,7 @@ const projects = setupProjects({
   commitLiveForm: commitLiveFormCheckpoint,
   registerFontName,
   renderFontOptions,
+  onProjectSwitch: () => chat?.syncProjectSession(),
 })
 const dialogs = setupDialogs({
   ...shared, selectPage, selectBox, listButton, commitLiveForm: commitLiveFormCheckpoint,

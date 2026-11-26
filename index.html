@@ -199,6 +199,7 @@
             <option value="paint">Cọ vẽ che chữ</option>
             <option value="clone">Cọ sao chép nền (Alt+bấm)</option>
             <option value="inpaint">Cọ tẩy chữ thông minh (Inpaint)</option>
+            <option value="retouch-erase">Cọ tẩy nét redraw</option>
             <option value="eyedropper">Hút màu</option>
           </select>
         </label>
@@ -206,6 +207,7 @@
         <label for="paint-color" id="paint-color-field">Màu cọ<input id="paint-color" type="color" value="#ffffff"></label>
         <label for="paint-opacity" id="paint-opacity-field">Độ đục (%)<input id="paint-opacity" type="number" min="5" max="100" value="100"></label>
         <span id="eyedropper-readout" class="muted" hidden></span>
+        <button type="button" id="clean-raw" class="button" title="Làm sạch ảnh raw: trắng giấy, khử nhiễu JPEG giữ screentone và tăng sắc nét (Hoàn tác được)">Làm sạch raw</button>
         <button type="button" id="undo-retouch" class="button" hidden>Hoàn tác nét cọ</button>
         <button type="button" id="clear-retouch" class="button danger" hidden>Xóa nét vẽ tay</button>
         <label class="choice"><input type="checkbox" id="show-cleanup" checked>Hiện redraw</label>
@@ -277,6 +279,18 @@
             <label class="choice"><input id="box-italic" type="checkbox"> Nghiêng</label>
             <label class="choice"><input id="box-uppercase" type="checkbox"> IN HOA</label>
             <label class="choice"><input id="box-vertical" type="checkbox"> Chữ dọc</label>
+            <label class="choice"><input id="box-bubble-fit" type="checkbox"> Ôm bong bóng</label>
+          </div>
+          <div class="two-fields">
+            <label class="field" for="box-warp">Uốn chữ (SFX)
+              <select id="box-warp">
+                <option value="none">Thẳng</option>
+                <option value="arc">Vòng cung lên</option>
+                <option value="arcDown">Vòng cung xuống</option>
+                <option value="wave">Lượn sóng</option>
+              </select>
+            </label>
+            <label class="field" for="box-warp-amount">Độ cong (%)<input id="box-warp-amount" type="number" min="-50" max="50" step="5" value="0"></label>
           </div>
           <div class="two-fields">
             <label class="field" for="box-size">Cỡ (px)<input id="box-size" type="number" min="8" max="400" required></label>
@@ -463,11 +477,11 @@
   <aside id="chat-panel" class="chat-panel" aria-label="Trợ lý AI Harness" hidden>
     <div class="chat-header">
       <div class="chat-title-group">
-        <h2>Trợ lý AI · Harness v2</h2>
+        <h2>Trợ lý AI · Harness v2.5</h2>
         <span id="chat-model-badge" class="chat-badge">Gemini</span>
       </div>
       <div class="chat-header-actions">
-        <button type="button" id="chat-compact" class="button" title="Nén lịch sử chat để tiết kiệm ngữ cảnh">Nén</button>
+        <button type="button" id="chat-compact" class="button" title="Nén lịch sử chat để tiết kiệm ngữ cảnh (hoặc gõ /compact ai)">Nén</button>
         <button type="button" id="chat-clear" class="button">Mới</button>
         <button type="button" id="chat-close" class="button" aria-label="Đóng khung chat">×</button>
       </div>
@@ -477,9 +491,16 @@
         <label class="choice"><input id="chat-allow-web" type="checkbox" checked> Web Search</label>
         <label class="choice"><input id="chat-allow-edits" type="checkbox" checked> Cho phép sửa khung &amp; thuật ngữ</label>
         <label class="choice"><input id="chat-plan-mode" type="checkbox"> Chế độ Kế hoạch (Plan)</label>
+        <label class="choice"><input id="chat-confirm-bulk" type="checkbox" checked> Hỏi duyệt sửa hàng loạt</label>
       </div>
       <details class="chat-search-config">
-        <summary>Cấu hình Web Search</summary>
+        <summary>Hồ sơ kỹ năng (Skill) &amp; Web Search</summary>
+        <label class="field" for="chat-skill">Hồ sơ biên tập
+          <select id="chat-skill"></select>
+        </label>
+        <label class="field" for="chat-skill-custom">Chỉ dẫn riêng cho bộ truyện
+          <textarea id="chat-skill-custom" rows="2" placeholder="Ví dụ: giữ tên nhân vật theo bản tiếng Nhật, xưng hô cậu/tớ..."></textarea>
+        </label>
         <label class="field" for="chat-search-provider">Nguồn tìm kiếm
           <select id="chat-search-provider">
             <option value="auto">Tự động (DuckDuckGo/Jisho/Wiki miễn phí)</option>
@@ -496,10 +517,10 @@
       </details>
       <div class="chat-chips" role="group" aria-label="Gợi ý nhanh">
         <button type="button" class="button" data-chat-prompt="Đọc các khung thoại trên trang hiện tại, tra web các tên riêng hoặc thuật ngữ tiếng Nhật/nước ngoài cần xác minh rồi đề xuất bổ sung vào Bảng thuật ngữ.">Tra thuật ngữ</button>
-        <button type="button" class="button" data-chat-prompt="Kiểm tra các khung đang bị tràn chữ trên trang hiện tại và tự khớp cỡ chữ giúp mình.">Khớp tràn khung</button>
-        <button type="button" class="button" data-chat-prompt="Chạy rà soát trước khi xuất toàn chương (check_export_preflight) và báo cáo từng lỗi cần xử lý theo trang.">Rà trước khi xuất</button>
+        <button type="button" class="button" data-chat-prompt="/autofit">Khớp tràn khung</button>
+        <button type="button" class="button" data-chat-prompt="/qc">Rà trước khi xuất</button>
         <button type="button" class="button" data-chat-prompt="Đọc lời thoại trang hiện tại cùng Bảng thuật ngữ, kiểm tra xem xưng hô và tên nhân vật có nhất quán không.">Rà xưng hô</button>
-        <button type="button" class="button" data-chat-prompt="Khảo sát toàn bộ dự án, tra cứu nếu cần và lập kế hoạch biên tập chi tiết từng bước.">Lập kế hoạch</button>
+        <button type="button" class="button" data-chat-prompt="/plan Khảo sát toàn bộ dự án, tra cứu nếu cần và lập kế hoạch biên tập chi tiết từng bước.">Lập kế hoạch</button>
       </div>
     </div>
     <div id="chat-todo-bar" class="chat-todo-bar" hidden>
@@ -515,7 +536,7 @@
       <span id="chat-stats" class="chat-stats muted" hidden></span>
     </div>
     <form id="chat-form" class="chat-composer">
-      <textarea id="chat-input" rows="2" placeholder="Hỏi AI tra web, rà lỗi, lập kế hoạch hoặc sửa khung… (Enter gửi, Shift+Enter xuống dòng)"></textarea>
+      <textarea id="chat-input" rows="2" placeholder="Hỏi AI hoặc gõ lệnh nhanh: /qc, /plan, /autofit, /compact ai, /help…"></textarea>
       <div class="form-actions">
         <button type="submit" id="chat-send" class="button primary">Gửi</button>
         <button type="button" id="chat-stop" class="button danger" hidden>Dừng</button>

@@ -203,7 +203,7 @@ test("native PatchMatch inpaint reconstructs masked regions with color adaptatio
     }
   }
   const payload = Buffer.concat([corrupted, mask])
-  const { result, data } = await worker.call("inpaint", { width, height, patchRadius: 3, colorAdapt: true }, payload)
+  const { result, data } = await worker.call("inpaint", { width, height, patchRadius: 3, colorAdapt: true, seamless: true }, payload)
   assert.equal(result.filled, holeCount)
   assert.equal(data.length, clean.length)
 
@@ -218,5 +218,34 @@ test("native PatchMatch inpaint reconstructs masked regions with color adaptatio
   }
   assert.equal(outsideDiffs, 0)
   const mae = afterErr / (holeCount * 3)
-  assert.ok(mae < 25, `Expected low C# PatchMatch MAE, got ${mae}`)
+  assert.ok(mae < 25, `Expected low C# PatchMatch+Poisson MAE, got ${mae}`)
+})
+
+test("native RawCleanup whitens yellowed scan paper and deepens faded ink while keeping image dimensions", { skip: !available }, async (t) => {
+  const worker = new native.NativeWorker(executable)
+  t.after(() => worker.close())
+  const { result: capabilities } = await worker.call("capabilities")
+  assert.ok(capabilities.operations.includes("clean_raw"))
+
+  const width = 48
+  const height = 48
+  const raw = new Uint8Array(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const off = (y * width + x) * 4
+      const isInk = x >= 18 && x <= 28 && y >= 10 && y <= 38
+      // Yellowed gray scan paper (225, 220, 205) with faded ink (55, 55, 55)
+      raw[off] = isInk ? 55 : 225
+      raw[off + 1] = isInk ? 55 : 220
+      raw[off + 2] = isInk ? 55 : 205
+      raw[off + 3] = 255
+    }
+  }
+  const { result, data } = await worker.call("clean_raw", { width, height, strength: 0.7, denoise: true, sharpen: true }, raw)
+  assert.equal(data.length, raw.length)
+  assert.equal(result.grayscale, true)
+  // Paper corner becomes clean white (>= 248) and ink becomes much darker (<= 20).
+  assert.ok(data[0] >= 248 && data[1] >= 248 && data[2] >= 248)
+  const inkOff = (24 * width + 23) * 4
+  assert.ok(data[inkOff] <= 20)
 })

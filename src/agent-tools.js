@@ -67,6 +67,8 @@ export function createAgentTools({
   renderFontOptions,
   onTodosChange,
   onPlanSubmit,
+  onAskUser,
+  onApproveTool,
   searchConfig = () => ({ provider: "auto", searchUrl: "", searchApiKey: "" }),
   searchWebFn = defaultSearchWeb,
   fetchWebPageFn = defaultFetchWebPage,
@@ -289,6 +291,9 @@ export function createAgentTools({
           italic: { type: "boolean" },
           uppercase: { type: "boolean" },
           vertical: { type: "boolean" },
+          bubbleFit: { type: "boolean", description: "Bật dàn chữ ôm theo đường cong bong bóng bầu dục." },
+          warp: { type: "string", enum: ["none", "arc", "arcDown", "wave"], description: "Kiểu uốn chữ SFX." },
+          warpAmount: { type: "number", description: "Độ cong uốn chữ (-50..50)." },
           lineHeight: { type: "number", description: "Giãn dòng (0.8-2.2)." },
           strokeWidth: { type: "number", description: "Độ dày viền chữ (0-24)." },
           strokeColor: { type: "string", description: "Màu viền chữ dạng #rrggbb." },
@@ -324,6 +329,9 @@ export function createAgentTools({
         if (typeof args.italic === "boolean") box.italic = args.italic
         if (typeof args.uppercase === "boolean") box.uppercase = args.uppercase
         if (typeof args.vertical === "boolean") box.vertical = args.vertical
+        if (typeof args.bubbleFit === "boolean") box.bubbleFit = args.bubbleFit
+        if (["none", "arc", "arcDown", "wave"].includes(args.warp)) box.warp = args.warp
+        if (Number.isFinite(args.warpAmount)) box.warpAmount = clamp(Math.round(args.warpAmount), -50, 50)
         if (Number.isFinite(args.lineHeight)) box.lineHeight = clamp(args.lineHeight, .8, 2.2)
         if (Number.isFinite(args.strokeWidth)) box.strokeWidth = clamp(args.strokeWidth, 0, 24)
         if (typeof args.strokeColor === "string" && hexColor.test(args.strokeColor)) box.strokeColor = args.strokeColor
@@ -386,6 +394,7 @@ export function createAgentTools({
     {
       name: "delete_box",
       category: "write",
+      requiresApproval: () => true,
       description: "Xóa một khung thoại theo boxId.",
       parameters: {
         type: "object",
@@ -413,6 +422,7 @@ export function createAgentTools({
     {
       name: "replace_chapter_text",
       category: "write",
+      requiresApproval: () => true,
       description: "Tìm và thay thế hàng loạt lời thoại trên toàn chương (ví dụ sửa tên nhân vật hoặc cách xưng hô).",
       parameters: {
         type: "object",
@@ -752,6 +762,7 @@ export function createAgentTools({
     {
       name: "apply_style_preset",
       category: "write",
+      requiresApproval: (args) => args?.scope === "chapter",
       description: "Áp dụng một Mẫu dàn chữ (Style Preset) đã lưu trong dự án lên khung, cả trang hoặc cả chương.",
       parameters: {
         type: "object",
@@ -798,6 +809,66 @@ export function createAgentTools({
         }
       },
     },
+    {
+      name: "ask_user",
+      category: "interaction",
+      timeoutMs: 0,
+      description:
+        "Đặt một câu hỏi trắc nghiệm ngắn cho người dùng ngay trong khung chat khi cần xác nhận cách dịch tên riêng, xưng hô hoặc phương án biên tập trước khi tiếp tục.",
+      parameters: {
+        type: "object",
+        properties: {
+          header: { type: "string", description: "Tiêu đề ngắn (vd: 'Chọn cách xưng hô')." },
+          question: { type: "string", description: "Câu hỏi cụ thể cần người dùng chọn." },
+          options: {
+            type: "array",
+            description: "Danh sách 2-4 lựa chọn gợi ý (đặt lựa chọn khuyên dùng đầu tiên).",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string", description: "Nhãn ngắn của lựa chọn." },
+                description: { type: "string", description: "Giải thích ngắn 1 câu." },
+              },
+              required: ["label"],
+            },
+          },
+          allowCustom: { type: "boolean", description: "Cho phép người dùng gõ câu trả lời khác (mặc định true)." },
+        },
+        required: ["question"],
+      },
+      async run(args, { signal }) {
+        const question = String(args?.question || "").trim()
+        if (!question) throw new Error("Câu hỏi không được để trống.")
+        if (!onAskUser) {
+          throw new Error("Giao diện hiện không hỗ trợ thẻ hỏi tương tác; hãy hỏi người dùng trực tiếp trong tin nhắn.")
+        }
+        const options = Array.isArray(args?.options)
+          ? args.options
+            .filter((o) => o && typeof o.label === "string" && o.label.trim())
+            .slice(0, 5)
+            .map((o) => ({ label: o.label.trim().slice(0, 120), description: String(o.description || "").trim().slice(0, 200) }))
+          : []
+        const reply = await onAskUser({
+          header: String(args?.header || "Cần bạn chọn").trim().slice(0, 80),
+          question,
+          options,
+          allowCustom: args?.allowCustom !== false,
+          signal,
+        })
+        if (!reply || reply.cancelled) {
+          return {
+            summary: "Người dùng đã bỏ qua câu hỏi",
+            data: { cancelled: true },
+            modelText: "Người dùng đã hủy thẻ hỏi để tự trả lời; hãy dừng chỉnh sửa và chờ chỉ dẫn thêm.",
+          }
+        }
+        return {
+          summary: `Người dùng chọn: ${reply.answer}`,
+          data: { answer: reply.answer, custom: Boolean(reply.custom) },
+          modelText: `Người dùng đã trả lời: ${reply.answer}`,
+        }
+      },
+    },
   ]
 
   const byName = new Map(catalog.map((tool) => [tool.name, tool]))
@@ -806,6 +877,7 @@ export function createAgentTools({
     if (tool.category === "web" && !allowWebSearch) return false
     if (tool.category === "write" && (!allowEdits || planMode)) return false
     if (tool.category === "plan" && !planMode) return false
+    if (tool.category === "interaction" && !onAskUser) return false
     return true
   }
 
@@ -857,11 +929,19 @@ export function createAgentTools({
       return byName.get(name)?.category ?? "read"
     },
     timeoutMs(name) {
-      return byName.get(name)?.timeoutMs ?? 12000
+      const val = byName.get(name)?.timeoutMs
+      return val !== undefined ? val : 12000
+    },
+    requiresApproval(name, args) {
+      return byName.get(name)?.requiresApproval?.(args) === true
     },
     getRuntimeSnapshot,
     getTodos() {
       return currentTodos
+    },
+    setTodos(todos) {
+      currentTodos = Array.isArray(todos) ? todos : []
+      onTodosChange?.(currentTodos)
     },
     getPlan() {
       return currentPlan
@@ -870,7 +950,7 @@ export function createAgentTools({
       currentTodos = []
       currentPlan = null
     },
-    async execute(name, args, { allowEdits = true, allowWebSearch = true, planMode = false, signal } = {}) {
+    async execute(name, args, { allowEdits = true, allowWebSearch = true, planMode = false, confirmBulkEdits = false, signal } = {}) {
       const tool = byName.get(name)
       if (!tool) return { ok: false, error: `Công cụ không tồn tại: ${name}` }
       if (!isEnabled(tool, { allowEdits, allowWebSearch, planMode })) {
@@ -880,6 +960,18 @@ export function createAgentTools({
           error: planMode && tool.category === "write"
             ? `Công cụ "${name}" đang bị khóa trong Chế độ Kế hoạch (Plan Mode). Hãy dùng submit_plan trước.`
             : `Công cụ "${name}" đang bị tắt bởi thiết lập quyền của người dùng.`,
+        }
+      }
+      if (confirmBulkEdits && tool.requiresApproval?.(args) && onApproveTool) {
+        const decision = await onApproveTool({ name, args, signal })
+        if (!decision?.approved) {
+          return {
+            ok: false,
+            category: tool.category,
+            error: decision?.reason
+              ? `Người dùng từ chối thao tác "${name}": ${decision.reason}`
+              : `Người dùng đã từ chối thực thi thao tác hàng loạt "${name}".`,
+          }
         }
       }
       try {

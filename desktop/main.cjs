@@ -99,7 +99,7 @@ app.whenReady().then(() => {
   })
   handle("khung-thoai:redraw-texture", (input) => imageWorker.available ? imageWorker.redraw(input) : undefined)
   handle("khung-thoai:native", (operation, options, data, taskId) => {
-    if (!["capabilities", "mask", "inpaint", "preprocess", "ocr", "png"].includes(operation)) throw new Error("Unknown renderer operation.")
+    if (!["capabilities", "mask", "inpaint", "clean_raw", "preprocess", "ocr", "png"].includes(operation)) throw new Error("Unknown renderer operation.")
     if (["ocr", "preprocess", "png"].includes(operation) && taskId) return tasks.submit(taskId, operation, options, data)
     return imageWorker.call(operation, options, data)
   })

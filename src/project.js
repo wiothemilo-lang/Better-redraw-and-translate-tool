@@ -27,6 +27,7 @@ export function projectStyle(style) {
   const {
     size, font, color, align, rotation, fill,
     bold = false, italic = false, uppercase = false, vertical = false,
+    bubbleFit = false, warp = "none", warpAmount = 0,
     lineHeight = 1.15, strokeWidth = 0, strokeColor = "#ffffff",
     shadowBlur = 0, shadowColor = "#000000",
     fillColor = "#ffffff", fillShape = "rect",
@@ -35,6 +36,7 @@ export function projectStyle(style) {
       !isText(color) || !/^#[\da-f]{6}$/i.test(color) || !["left", "center", "right"].includes(align) ||
       !inRange(rotation, -180, 180) || typeof fill !== "boolean" ||
       typeof bold !== "boolean" || typeof italic !== "boolean" || typeof uppercase !== "boolean" || typeof vertical !== "boolean" ||
+      typeof bubbleFit !== "boolean" || !["none", "arc", "arcDown", "wave"].includes(warp) || !inRange(warpAmount, -50, 50) ||
       !inRange(lineHeight, .8, 2.2) || !inRange(strokeWidth, 0, 24) ||
       !isText(strokeColor) || !/^#[\da-f]{6}$/i.test(strokeColor) ||
       !inRange(shadowBlur, 0, 24) || !isText(shadowColor) || !/^#[\da-f]{6}$/i.test(shadowColor) ||
@@ -48,6 +50,8 @@ export function projectStyle(style) {
     ...(italic && { italic }),
     ...(uppercase && { uppercase }),
     ...(vertical && { vertical }),
+    ...(bubbleFit && { bubbleFit }),
+    ...(warp !== "none" && warpAmount !== 0 && { warp, warpAmount }),
     ...(lineHeight !== 1.15 && { lineHeight }),
     ...(strokeWidth > 0 && { strokeWidth, strokeColor }),
     ...(shadowBlur > 0 && { shadowBlur, shadowColor }),

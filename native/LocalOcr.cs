@@ -36,7 +36,7 @@ internal static class LocalOcr
     {
         var result = new JsonObject {
             ["protocol"] = 1,
-            ["operations"] = new JsonArray("redraw", "mask", "inpaint", "preprocess", "ocr", "png", "zip", "project"),
+            ["operations"] = new JsonArray("redraw", "mask", "inpaint", "clean_raw", "preprocess", "ocr", "png", "zip", "project"),
             ["languages"] = new JsonArray(),
         };
         try

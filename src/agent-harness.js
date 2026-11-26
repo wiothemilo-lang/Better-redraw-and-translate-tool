@@ -1,11 +1,15 @@
 import { executeToolBatch } from "./agent-pipeline.js"
 import {
+  SUMMARY_CLOSE_TAG,
+  SUMMARY_OPEN_TAG,
   buildLayeredSystemPrompt,
   buildRuntimeContextReminder,
   compactChatHistory,
   pruneOldToolResults,
   retainHeadTailText,
 } from "./agent-context.js"
+import { RepeatToolGuard } from "./agent-guards.js"
+import { parseRetryAfterMs, withLlmRetry } from "./llm-retry.js"
 import { validateEndpointUrl } from "./openai-compat.js"
 
 const geminiModelOptions = {
@@ -21,6 +25,7 @@ export function buildSystemPrompt({
   sourceLanguage = "Japanese",
   targetLanguage = "Vietnamese",
   direction = "rtl",
+  skillPrompt = "",
 } = {}) {
   return buildLayeredSystemPrompt({
     allowEdits,
@@ -29,6 +34,7 @@ export function buildSystemPrompt({
     sourceLanguage,
     targetLanguage,
     direction,
+    skillPrompt,
   })
 }
 
@@ -114,7 +120,10 @@ async function callGeminiStep({ settings, systemPrompt, contents, toolDefs, sign
     const canFallback = [404, 429, 500, 502, 503, 504].includes(response.status) && i + 1 < models.length
     if (!canFallback) break
   }
-  throw new Error(`Gemini trả lỗi ${response.status}. Kiểm tra khóa API và hạn mức.`)
+  const err = new Error(`Gemini trả lỗi ${response.status}. Kiểm tra khóa API và hạn mức.`)
+  err.status = response.status
+  err.retryAfterMs = parseRetryAfterMs(response.headers?.get?.("retry-after"))
+  throw err
 }
 
 async function callOpenAiStep({ settings, messages, toolDefs, signal }) {
@@ -147,7 +156,10 @@ async function callOpenAiStep({ settings, messages, toolDefs, signal }) {
     body: JSON.stringify(body),
   })
   if (!response.ok) {
-    throw new Error(`LLM trả lỗi ${response.status}. Kiểm tra Base URL, tên model và API key.`)
+    const err = new Error(`LLM trả lỗi ${response.status}. Kiểm tra Base URL, tên model và API key.`)
+    err.status = response.status
+    err.retryAfterMs = parseRetryAfterMs(response.headers?.get?.("retry-after"))
+    throw err
   }
   const payload = await response.json()
   const message = payload.choices?.[0]?.message ?? {}
@@ -183,6 +195,66 @@ async function callOpenAiStep({ settings, messages, toolDefs, signal }) {
   }
 }
 
+export async function summarizeHistoryWithLlm({ history = [], settings, keepRecentMessages = 4, signal } = {}) {
+  const list = Array.isArray(history) ? history.filter((m) => m && typeof m.text === "string" && m.text.trim()) : []
+  if (list.length <= keepRecentMessages + 1) {
+    return compactChatHistory(list, { keepRecentMessages, force: true })
+  }
+  const totalChars = list.reduce((sum, m) => sum + m.text.length, 0)
+  const older = list.slice(0, list.length - keepRecentMessages)
+  const recent = list.slice(list.length - keepRecentMessages)
+  const transcript = older
+    .map((m) => `${m.role === "user" ? "Người dùng" : "Trợ lý"}: ${m.text.slice(0, 1000)}`)
+    .join("\n\n")
+  const directive = [
+    "Hãy tóm tắt ngắn gọn bằng tiếng Việt đoạn hội thoại biên tập truyện tranh trên thành một mốc ngữ cảnh (checkpoint) để tiếp tục công việc không mất thông tin quan trọng.",
+    "Giữ các mục ngắn dạng gạch đầu dòng: Mục tiêu chính, Tên nhân vật / Xưng hô & Thuật ngữ đã chốt, Các thay đổi đã làm, Việc còn dang dở.",
+    "Chỉ xuất nội dung tóm tắt, không gọi công cụ.",
+  ].join("\n")
+
+  const isOpenAi = settings?.provider === "openai"
+  const reply = isOpenAi
+    ? await withLlmRetry(
+      () => callOpenAiStep({
+        settings,
+        messages: [
+          { role: "system", content: "Bạn là bộ nén ngữ cảnh cho trình biên tập truyện tranh Nixio." },
+          { role: "user", content: `${transcript}\n\n---\n${directive}` },
+        ],
+        toolDefs: [],
+        signal,
+      }),
+      { maxRetries: 1, signal },
+    )
+    : await withLlmRetry(
+      () => callGeminiStep({
+        settings,
+        systemPrompt: "Bạn là bộ nén ngữ cảnh cho trình biên tập truyện tranh Nixio.",
+        contents: [{ role: "user", parts: [{ text: `${transcript}\n\n---\n${directive}` }] }],
+        toolDefs: [],
+        signal,
+      }),
+      { maxRetries: 1, signal },
+    )
+
+  const summary = stripReasoning(reply.text).answer.trim()
+  if (!summary) return compactChatHistory(list, { keepRecentMessages, force: true })
+  const checkpointMessage = {
+    role: "assistant",
+    compacted: true,
+    text: `${SUMMARY_OPEN_TAG}\n${summary}\n${SUMMARY_CLOSE_TAG}`,
+  }
+  const nextHistory = [checkpointMessage, ...recent]
+  const nextChars = nextHistory.reduce((sum, m) => sum + m.text.length, 0)
+  return {
+    history: nextHistory,
+    compacted: true,
+    llmSummarized: true,
+    foldedMessages: older.length,
+    charsSaved: Math.max(0, totalChars - nextChars),
+  }
+}
+
 export async function runAgentTurn({
   history = [],
   userMessage,
@@ -191,7 +263,10 @@ export async function runAgentTurn({
   allowEdits = true,
   allowWebSearch = true,
   planMode = false,
+  confirmBulkEdits = false,
+  skillPrompt = "",
   maxSteps = 10,
+  maxRetries = 2,
   signal,
   onEvent = () => {},
 }) {
@@ -217,6 +292,7 @@ export async function runAgentTurn({
     sourceLanguage: settings.source,
     targetLanguage: settings.target,
     direction: settings.direction,
+    skillPrompt,
   })
   const providerLabel = settings.provider === "openai"
     ? (settings.llmModel || "OpenAI/Local")
@@ -232,8 +308,10 @@ export async function runAgentTurn({
   const isOpenAi = settings.provider === "openai"
   const toolTrace = []
   const thoughts = []
+  const repeatGuard = new RepeatToolGuard()
   let totalPrunedChars = compacted.charsSaved
   let editsMade = 0
+  let retriesUsed = 0
 
   // Build provider-specific message thread from clean chat history ({ role: "user"|"assistant", text }).
   const geminiContents = workingHistory.map((msg) => ({
@@ -271,9 +349,19 @@ export async function runAgentTurn({
 
     onEvent({ type: "step", step, maxSteps })
 
-    const reply = isOpenAi
-      ? await callOpenAiStep({ settings, messages: openAiMessages, toolDefs, signal })
-      : await callGeminiStep({ settings, systemPrompt, contents: geminiContents, toolDefs, signal })
+    const reply = await withLlmRetry(
+      () => (isOpenAi
+        ? callOpenAiStep({ settings, messages: openAiMessages, toolDefs, signal })
+        : callGeminiStep({ settings, systemPrompt, contents: geminiContents, toolDefs, signal })),
+      {
+        maxRetries,
+        signal,
+        onRetry({ attempt, maxRetries: limit, delayMs }) {
+          retriesUsed++
+          onEvent({ type: "retry", attempt, maxRetries: limit, delayMs })
+        },
+      },
+    )
 
     signal?.throwIfAborted()
     const { thought, answer } = stripReasoning(reply.text)
@@ -304,15 +392,23 @@ export async function runAgentTurn({
       allowEdits: effectiveAllowEdits,
       allowWebSearch,
       planMode,
+      confirmBulkEdits,
       maxParallel: 4,
       signal,
       onEvent,
     })
 
     const geminiResponses = []
+    const guardReminders = []
     for (const entry of settled) {
       toolTrace.push(entry)
       if (entry.ok && entry.category === "write") editsMade++
+      const guardHit = repeatGuard.observe(entry.name, entry.args)
+      if (guardHit) {
+        guardReminders.push(guardHit.reminder)
+        onEvent({ type: "guard", toolName: guardHit.toolName, count: guardHit.count, level: guardHit.level })
+      }
+
       const rawModelPayload = entry.ok
         ? (entry.modelText ?? JSON.stringify({ ok: true, summary: entry.summary, data: entry.data }))
         : JSON.stringify({ ok: false, error: entry.error, ...(entry.code && { code: entry.code }) })
@@ -338,7 +434,14 @@ export async function runAgentTurn({
         })
       }
     }
-    if (!isOpenAi) {
+    if (isOpenAi) {
+      for (const reminder of guardReminders) {
+        openAiMessages.push({ role: "user", content: reminder })
+      }
+    } else {
+      for (const reminder of guardReminders) {
+        geminiResponses.push({ text: reminder })
+      }
       geminiContents.push({ role: "user", parts: geminiResponses })
     }
 
@@ -361,6 +464,7 @@ export async function runAgentTurn({
     toolTrace,
     updatedHistory,
     editsMade,
+    retriesUsed,
     prunedChars: totalPrunedChars,
     elapsedMs: Math.round(performance.now() - turnStart),
     todos: tools.getTodos?.() ?? [],

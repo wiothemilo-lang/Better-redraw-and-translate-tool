@@ -68,6 +68,112 @@ function wrap(context, text, width) {
   })
 }
 
+export function ellipseChordWidth(innerW, innerH, lineCenterY) {
+  const b = Math.max(1, innerH / 2)
+  const yNorm = Math.min(0.98, Math.abs(lineCenterY) / b)
+  return Math.max(1, innerW * Math.sqrt(Math.max(0.04, 1 - yNorm * yNorm)))
+}
+
+function wrapIntoLineWidths(context, text, widths) {
+  const lines = []
+  const maxSlots = widths.length
+  const widthAt = (idx) => widths[Math.min(idx, maxSlots - 1)]
+  for (const paragraph of text.split(/\r?\n/)) {
+    let line = ""
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const limit = widthAt(lines.length)
+      const candidate = line ? line + " " + word : word
+      if (line && context.measureText(candidate).width > limit) {
+        lines.push(line)
+        line = ""
+      }
+      const nextLimit = widthAt(lines.length)
+      if (context.measureText(word).width > nextLimit) {
+        for (const char of word) {
+          const charLimit = widthAt(lines.length)
+          if (line && context.measureText(line + char).width > charLimit) {
+            lines.push(line)
+            line = ""
+          }
+          line += char
+        }
+      } else {
+        line = line ? line + " " + word : word
+      }
+    }
+    lines.push(line)
+  }
+  return lines
+}
+
+function wrapEllipse(context, text, innerW, innerH, lineHeight) {
+  const maxRows = Math.max(1, Math.min(40, Math.floor(innerH / Math.max(1, lineHeight))))
+  let best = null
+  for (let rows = 1; rows <= maxRows; rows++) {
+    const startY = -((rows - 1) * lineHeight) / 2
+    const widths = Array.from({ length: rows }, (_, i) => {
+      const cy = startY + i * lineHeight
+      // Check both top and bottom edges of the line band against the ellipse chord (like PhotoCraft AreaShape).
+      const topW = ellipseChordWidth(innerW, innerH, cy - lineHeight * 0.35)
+      const botW = ellipseChordWidth(innerW, innerH, cy + lineHeight * 0.35)
+      return Math.min(topW, botW)
+    })
+    const lines = wrapIntoLineWidths(context, text, widths)
+    if (lines.length <= rows) {
+      const actualStartY = -((lines.length - 1) * lineHeight) / 2
+      const lineWidths = lines.map((_, i) => {
+        const cy = actualStartY + i * lineHeight
+        return Math.min(
+          ellipseChordWidth(innerW, innerH, cy - lineHeight * 0.35),
+          ellipseChordWidth(innerW, innerH, cy + lineHeight * 0.35),
+        )
+      })
+      best = { lines, lineWidths }
+      break
+    }
+    best = { lines, lineWidths: lines.map((_, i) => widths[Math.min(i, widths.length - 1)]) }
+  }
+  return best ?? { lines: wrap(context, text, innerW), lineWidths: null }
+}
+
+function drawWarpedLine(context, line, centerX, centerY, spanWidth, warp, warpAmount, strokeWidth) {
+  const chars = Array.from(line)
+  if (!chars.length) return
+  const widths = chars.map((ch) => context.measureText(ch).width)
+  const totalW = widths.reduce((sum, w) => sum + w, 0)
+  if (totalW <= 0) return
+
+  const bend = (clamp(Number(warpAmount) || 0, -50, 50) / 100) * Math.max(24, spanWidth * 0.45)
+  let cursor = -totalW / 2
+  const halfSpan = Math.max(1, totalW / 2)
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i]
+    const cw = widths[i]
+    const localX = cursor + cw / 2
+    cursor += cw
+    const u = clamp(localX / halfSpan, -1, 1)
+    let dy = 0
+    let slope = 0
+    if (warp === "arc" || warp === "arcDown") {
+      const sign = warp === "arcDown" ? 1 : -1
+      dy = sign * bend * (1 - u * u)
+      slope = sign * bend * (-2 * u) / halfSpan
+    } else if (warp === "wave") {
+      dy = Math.sin(u * Math.PI) * bend * 0.7
+      slope = (Math.cos(u * Math.PI) * Math.PI * bend * 0.7) / halfSpan
+    }
+    const angle = Math.atan(slope)
+    context.save()
+    context.translate(centerX + localX, centerY + dy)
+    context.rotate(angle)
+    context.textAlign = "center"
+    if (strokeWidth > 0) context.strokeText(ch, 0, 0)
+    context.fillText(ch, 0, 0)
+    context.restore()
+  }
+}
+
 function wrapVertical(text, maxHeight, step) {
   const perColumn = Math.max(1, Math.floor(maxHeight / Math.max(1, step)))
   const columns = []
@@ -108,9 +214,20 @@ function geometry(context, box, width, height) {
     }
   }
 
-  const lines = wrap(context, text, Math.max(1, w - padding * 2))
+  const innerW = Math.max(1, w - padding * 2)
+  const innerH = Math.max(1, h - padding * 2)
+  if (box.bubbleFit) {
+    const { lines, lineWidths } = wrapEllipse(context, text, innerW, innerH, lineHeight)
+    return {
+      w, h, padding, vertical: false, lines, lineWidths, lineHeight, cx, cy, angle,
+      offsetX: { left: -w / 2 + padding, center: 0, right: w / 2 - padding }[box.align],
+      offsetY: -(lines.length - 1) * lineHeight / 2,
+    }
+  }
+
+  const lines = wrap(context, text, innerW)
   return {
-    w, h, padding, vertical: false, lines, lineHeight, cx, cy, angle,
+    w, h, padding, vertical: false, lines, lineWidths: null, lineHeight, cx, cy, angle,
     offsetX: { left: -w / 2 + padding, center: 0, right: w / 2 - padding }[box.align],
     offsetY: -(lines.length - 1) * lineHeight / 2,
   }
@@ -188,11 +305,25 @@ function drawBox(canvas, box, {
         })
       })
     } else {
+      const hasWarp = box.warp && box.warp !== "none" && Number(box.warpAmount || 0) !== 0
       context.textAlign = box.align
       g.lines.forEach((line, index) => {
         const y = g.offsetY + index * g.lineHeight
-        if (strokeWidth > 0) context.strokeText(line, g.offsetX, y)
-        context.fillText(line, g.offsetX, y)
+        if (hasWarp) {
+          const lineW = g.lineWidths?.[index] ?? Math.max(1, g.w - g.padding * 2)
+          const cxLine = box.align === "center"
+            ? 0
+            : box.align === "left"
+              ? -lineW / 2 + context.measureText(line).width / 2
+              : lineW / 2 - context.measureText(line).width / 2
+          drawWarpedLine(context, line, cxLine, y, g.w - g.padding * 2, box.warp, box.warpAmount, strokeWidth)
+        } else {
+          const lineOffsetX = g.lineWidths
+            ? (box.align === "center" ? 0 : box.align === "left" ? -g.lineWidths[index] / 2 : g.lineWidths[index] / 2)
+            : g.offsetX
+          if (strokeWidth > 0) context.strokeText(line, lineOffsetX, y)
+          context.fillText(line, lineOffsetX, y)
+        }
       })
     }
   }
@@ -374,7 +505,10 @@ export function textOverflows(page, box) {
     return g.columns.length * g.columnStep > g.w - g.padding * 2 + .01 || maxColHeight > g.h - g.padding * 2 + .01
   }
   return g.lines.length * g.lineHeight > g.h - g.padding * 2 ||
-    g.lines.some((line) => context.measureText(line).width > g.w - g.padding * 2 + .01)
+    g.lines.some((line, index) => {
+      const limit = g.lineWidths?.[index] ?? (g.w - g.padding * 2)
+      return context.measureText(line).width > limit + .01
+    })
 }
 
 export function autoFitBox(page, box) {

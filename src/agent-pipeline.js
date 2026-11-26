@@ -42,7 +42,7 @@ function abortedBeforeDispatchOutcome(call) {
   }
 }
 
-async function runSingleCall(call, { tools, allowEdits, allowWebSearch, planMode = false, signal, onEvent }) {
+async function runSingleCall(call, { tools, allowEdits, allowWebSearch, planMode = false, confirmBulkEdits = false, signal, onEvent }) {
   if (signal?.aborted) return abortedBeforeDispatchOutcome(call)
 
   let frozenArgs
@@ -66,7 +66,9 @@ async function runSingleCall(call, { tools, allowEdits, allowWebSearch, planMode
   const start = performance.now()
   onEvent?.({ type: "tool_start", id: call.id, name: call.name, args: frozenArgs })
 
-  const timeoutMs = tools.timeoutMs?.(call.name) ?? 15000
+  const rawTimeout = tools.timeoutMs?.(call.name)
+  const needsHumanWait = rawTimeout === 0 || (confirmBulkEdits && tools.requiresApproval?.(call.name, frozenArgs))
+  const timeoutMs = needsHumanWait ? 0 : (rawTimeout ?? 15000)
   const execSignal = fuseSignals(signal, timeoutMs)
 
   let outcome
@@ -75,6 +77,7 @@ async function runSingleCall(call, { tools, allowEdits, allowWebSearch, planMode
       allowEdits,
       allowWebSearch,
       planMode,
+      confirmBulkEdits,
       signal: execSignal,
     })
   } catch (error) {
@@ -111,7 +114,7 @@ async function runSingleCall(call, { tools, allowEdits, allowWebSearch, planMode
  */
 export async function executeToolBatch(
   calls,
-  { tools, allowEdits = true, allowWebSearch = true, planMode = false, maxParallel = 4, signal, onEvent } = {},
+  { tools, allowEdits = true, allowWebSearch = true, planMode = false, confirmBulkEdits = false, maxParallel = 4, signal, onEvent } = {},
 ) {
   const limit = Math.max(1, Math.min(8, Math.floor(Number(maxParallel) || 4)))
   const results = new Array(calls.length)
@@ -132,6 +135,7 @@ export async function executeToolBatch(
         allowEdits,
         allowWebSearch,
         planMode,
+        confirmBulkEdits,
         signal,
         onEvent,
       })
@@ -161,6 +165,7 @@ export async function executeToolBatch(
           allowEdits,
           allowWebSearch,
           planMode,
+          confirmBulkEdits,
           signal,
           onEvent,
         })
