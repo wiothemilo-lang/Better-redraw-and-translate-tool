@@ -1,7 +1,9 @@
+import { psdFontName } from "./fonts.js"
 import { nativeCapabilities } from "./native.js"
 import { paintRedraw, redrawLayout } from "./redraw.js"
+import { paintRetouchStrokes } from "./retouch.js"
+import { fitBoxFontSize } from "./tools.js"
 
-const psdFonts = { Arial: "ArialMT", Georgia: "Georgia", Verdana: "Verdana", "Times New Roman": "TimesNewRomanPSMT" }
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 
 export function makeBox(page, rectangle, text = "Lời thoại mới") {
@@ -31,6 +33,14 @@ function baseCanvas(page) {
   return canvas
 }
 
+function displayText(box) {
+  return box.uppercase ? box.text.toUpperCase() : box.text
+}
+
+function fontSpec(box) {
+  return `${box.italic ? "italic " : ""}${box.bold ? "bold " : ""}${box.size}px "${box.font}", sans-serif`
+}
+
 function wrap(context, text, width) {
   return text.split(/\r?\n/).flatMap((paragraph) => {
     const lines = []
@@ -58,21 +68,77 @@ function wrap(context, text, width) {
   })
 }
 
+function wrapVertical(text, maxHeight, step) {
+  const perColumn = Math.max(1, Math.floor(maxHeight / Math.max(1, step)))
+  const columns = []
+  for (const paragraph of text.split(/\r?\n/)) {
+    const chars = Array.from(paragraph.trim())
+    if (!chars.length) {
+      columns.push([""])
+      continue
+    }
+    for (let index = 0; index < chars.length; index += perColumn) {
+      columns.push(chars.slice(index, index + perColumn))
+    }
+  }
+  return columns.length ? columns : [[""]]
+}
+
 function geometry(context, box, width, height) {
   const w = box.w * width
   const h = box.h * height
-  const padding = Math.max(2, Math.min(w, h) * 0.07)
-  context.font = box.size + 'px "' + box.font + '", sans-serif'
-  const lines = wrap(context, box.text, Math.max(1, w - padding * 2))
-  const lineHeight = box.size * 1.15
+  const strokePad = Math.max(0, box.strokeWidth ?? 0)
+  const padding = Math.max(2, Math.min(w, h) * 0.07) + strokePad
+  context.font = fontSpec(box)
+  const lineSpacing = box.lineHeight ?? 1.15
+  const lineHeight = box.size * lineSpacing
+  const text = displayText(box)
+  const angle = box.rotation * Math.PI / 180
+  const cx = (box.x + box.w / 2) * width
+  const cy = (box.y + box.h / 2) * height
+
+  if (box.vertical) {
+    const columns = wrapVertical(text, Math.max(box.size, h - padding * 2), lineHeight)
+    const columnStep = box.size * Math.max(1, lineSpacing)
+    return {
+      w, h, padding, vertical: true, columns, lineHeight, columnStep, cx, cy, angle,
+      lines: columns.map((column) => column.join("")),
+      offsetX: 0,
+      offsetY: 0,
+    }
+  }
+
+  const lines = wrap(context, text, Math.max(1, w - padding * 2))
   return {
-    w, h, lines, lineHeight,
-    cx: (box.x + box.w / 2) * width,
-    cy: (box.y + box.h / 2) * height,
+    w, h, padding, vertical: false, lines, lineHeight, cx, cy, angle,
     offsetX: { left: -w / 2 + padding, center: 0, right: w / 2 - padding }[box.align],
     offsetY: -(lines.length - 1) * lineHeight / 2,
-    angle: box.rotation * Math.PI / 180,
   }
+}
+
+function drawFillShape(context, g, box) {
+  context.fillStyle = box.fillColor || "#fff"
+  if (box.fillShape === "ellipse") {
+    context.beginPath()
+    context.ellipse(0, 0, Math.max(1, g.w / 2), Math.max(1, g.h / 2), 0, 0, Math.PI * 2)
+    context.fill()
+    return
+  }
+  if (box.fillShape === "rounded") {
+    const radius = Math.min(g.w, g.h) * 0.16
+    const x = -g.w / 2
+    const y = -g.h / 2
+    context.beginPath()
+    context.moveTo(x + radius, y)
+    context.arcTo(x + g.w, y, x + g.w, y + g.h, radius)
+    context.arcTo(x + g.w, y + g.h, x, y + g.h, radius)
+    context.arcTo(x, y + g.h, x, y, radius)
+    context.arcTo(x, y, x + g.w, y, radius)
+    context.closePath()
+    context.fill()
+    return
+  }
+  context.fillRect(-g.w / 2, -g.h / 2, g.w, g.h)
 }
 
 function drawBox(canvas, box, {
@@ -86,15 +152,42 @@ function drawBox(canvas, box, {
   context.beginPath()
   context.rect(-g.w / 2, -g.h / 2, g.w, g.h)
   context.clip()
-  if (background && box.fill) {
-    context.fillStyle = "#fff"
-    context.fillRect(-g.w / 2, -g.h / 2, g.w, g.h)
-  }
+  if (background && box.fill) drawFillShape(context, g, box)
   if (text) {
+    const strokeWidth = Math.max(0, box.strokeWidth ?? 0)
+    if (strokeWidth > 0) {
+      context.strokeStyle = box.strokeColor || "#ffffff"
+      context.lineWidth = strokeWidth * 2
+      context.lineJoin = "round"
+      context.miterLimit = 2
+    }
     context.fillStyle = box.color
-    context.textAlign = box.align
     context.textBaseline = "middle"
-    g.lines.forEach((line, index) => context.fillText(line, g.offsetX, g.offsetY + index * g.lineHeight))
+    if (g.vertical) {
+      context.textAlign = "center"
+      const startX = (g.columns.length - 1) * g.columnStep / 2
+      g.columns.forEach((column, colIndex) => {
+        const x = startX - colIndex * g.columnStep
+        const colHeight = (column.length - 1) * g.lineHeight
+        const startY = box.align === "left"
+          ? -g.h / 2 + g.padding + box.size / 2
+          : box.align === "right"
+            ? g.h / 2 - g.padding - box.size / 2 - colHeight
+            : -colHeight / 2
+        column.forEach((char, rowIndex) => {
+          const y = startY + rowIndex * g.lineHeight
+          if (strokeWidth > 0) context.strokeText(char, x, y)
+          context.fillText(char, x, y)
+        })
+      })
+    } else {
+      context.textAlign = box.align
+      g.lines.forEach((line, index) => {
+        const y = g.offsetY + index * g.lineHeight
+        if (strokeWidth > 0) context.strokeText(line, g.offsetX, y)
+        context.fillText(line, g.offsetX, y)
+      })
+    }
   }
   context.restore()
 }
@@ -109,7 +202,10 @@ function paintPage(canvas, page, patches, { showCleanup = true, showText = true 
   const context = canvas.getContext("2d")
   context.clearRect(0, 0, width, height)
   context.drawImage(page.image, 0, 0)
-  if (showCleanup) paintRedraw(canvas, patches)
+  if (showCleanup) {
+    paintRedraw(canvas, patches)
+    paintRetouchStrokes(canvas, page)
+  }
   if (showText) page.boxes.forEach((box) => drawBox(canvas, box))
 }
 
@@ -129,7 +225,7 @@ function croppedLayer({ width, height }, box, options) {
   const top = Math.max(0, Math.floor(cy - halfHeight))
   const right = Math.min(width, Math.ceil(cx + halfWidth))
   const bottom = Math.min(height, Math.ceil(cy + halfHeight))
-  const crop = makeCanvas(right - left, bottom - top)
+  const crop = makeCanvas(Math.max(1, right - left), Math.max(1, bottom - top))
   drawBox(crop, box, { width, height, left, top, ...options })
   return { canvas: crop, left, top }
 }
@@ -145,7 +241,14 @@ function psdTextLayer(canvas, box) {
     text: {
       text: g.lines.join("\n"),
       transform: [cos, sin, -sin, cos, g.cx + g.offsetX * cos - baseline * sin, g.cy + g.offsetX * sin + baseline * cos],
-      style: { font: { name: psdFonts[box.font] }, fontSize: box.size, leading: g.lineHeight, fillColor: { r: rgb[0], g: rgb[1], b: rgb[2] } },
+      style: {
+        font: { name: psdFontName(box.font) },
+        fontSize: box.size,
+        leading: g.lineHeight,
+        fauxBold: Boolean(box.bold),
+        fauxItalic: Boolean(box.italic),
+        fillColor: { r: rgb[0], g: rgb[1], b: rgb[2] },
+      },
       paragraphStyle: { justification: box.align },
     },
   }
@@ -158,7 +261,11 @@ export async function nativePageLayers(page) {
   const text = makeCanvas(base.width, base.height)
   page.boxes.forEach((box) => drawBox(text, box))
   const read = (canvas) => canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data
-  let patches = redraw.patches
+  let patches = [...redraw.patches]
+  if (page.retouchStrokes?.length) {
+    const retouch = makeCanvas(base.width, base.height)
+    if (paintRetouchStrokes(retouch, page)) patches.push({ patch: retouch, left: 0, top: 0 })
+  }
   if (patches.reduce((sum, { patch }) => sum + patch.width * patch.height, 0) > base.width * base.height) {
     const merged = makeCanvas(base.width, base.height)
     paintRedraw(merged, patches)
@@ -196,9 +303,10 @@ export async function exportPage(page, format) {
   const { writePsd } = await import("ag-psd")
   const base = baseCanvas(page)
   const children = [{ name: "Ảnh gốc", canvas: base }]
-  if (redraw.patches.length) {
+  if (redraw.patches.length || page.retouchStrokes?.length) {
     const cleaned = makeCanvas(base.width, base.height)
     paintRedraw(cleaned, redraw.patches)
+    paintRetouchStrokes(cleaned, page)
     children.push({ name: "Nền đã xóa chữ", canvas: cleaned })
   }
   const dialogue = []
@@ -221,7 +329,14 @@ export async function exportPage(page, format) {
 export function textOverflows(page, box) {
   const context = document.createElement("canvas").getContext("2d")
   const g = geometry(context, box, page.image.naturalWidth, page.image.naturalHeight)
-  const padding = Math.max(2, Math.min(g.w, g.h) * .07)
-  return g.lines.length * g.lineHeight > g.h - padding * 2 ||
-    g.lines.some((line) => context.measureText(line).width > g.w - padding * 2 + .01)
+  if (g.vertical) {
+    const maxColHeight = Math.max(...g.columns.map((column) => column.length)) * g.lineHeight
+    return g.columns.length * g.columnStep > g.w - g.padding * 2 + .01 || maxColHeight > g.h - g.padding * 2 + .01
+  }
+  return g.lines.length * g.lineHeight > g.h - g.padding * 2 ||
+    g.lines.some((line) => context.measureText(line).width > g.w - g.padding * 2 + .01)
+}
+
+export function autoFitBox(page, box) {
+  return fitBoxFontSize(page, box, textOverflows)
 }

@@ -54,15 +54,21 @@ Xem [hướng dẫn lõi native](native/README.md) để cài OCR, đóng gói e
 
 Bấm **Lưu dự án** để tải tệp `.khungthoai` chứa ảnh gốc, thứ tự trang, kịch bản, khung thoại, câu chưa đặt và thiết lập dịch. Dùng **Mở dự án** trên web hoặc Electron để tiếp tục từ trang đang làm. Tệp v2 lưu thêm mẫu chữ, vùng xóa, nét cọ, bảng thuật ngữ và tiến độ dịch. Ứng dụng tiếp tục đọc tệp v1. Khóa API Gemini chỉ giữ trong phiên. Các chỉnh sửa sau lần lưu gần nhất cần được lưu lại trước khi đóng app hoặc tải lại trang.
 
-## Hoàn tác và mẫu dàn chữ
+## Hoàn tác, dàn chữ nâng cao và mẫu kiểu
 
-Dùng **Hoàn tác** / **Làm lại** hoặc Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z (Ctrl+Y cũng được). Lịch sử giữ tối đa 40 thao tác trong phiên, gồm thêm/bỏ trang, sắp xếp, dàn thoại, sửa/kéo/xóa khung, đặt câu chờ, áp dụng mẫu, vẽ cọ và dịch. Trong ô nhập, phím tắt dùng lịch sử nhập văn bản của trình duyệt. Mở dự án khác sẽ bắt đầu lịch sử mới.
+Dùng **Hoàn tác** / **Làm lại** hoặc Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z (Ctrl+Y cũng được). Lịch sử giữ tối đa 40 thao tác trong phiên, gồm thêm/bỏ trang, sắp xếp, dàn thoại, sửa/kéo/co giãn/xoay/xóa khung, đặt câu chờ, áp dụng mẫu, vẽ cọ che/sao chép nền, thay thế hàng loạt và dịch. Trong ô nhập, phím tắt dùng lịch sử nhập văn bản của trình duyệt. Mở dự án khác sẽ bắt đầu lịch sử mới.
 
-Chọn và lưu một khung, nhập tên trong **Mẫu dàn chữ** rồi bấm **Lưu kiểu khung đang chọn**. Mẫu chứa font, cỡ, màu, canh, góc xoay và nền trắng. Áp dụng mẫu cho khung đang chọn, mọi khung trên trang hoặc cả chương. Lưu cùng tên sẽ cập nhật mẫu đó. Mẫu được giữ trong tệp dự án.
+Trên bàn vẽ, chọn khung để **kéo 8 tay cầm co giãn** hoặc **kéo tay cầm tròn phía trên để xoay** (giữ `Shift` để xoay theo nấc 15°). Dùng nút `−`/`+` hoặc `Ctrl + cuộn chuột` để thu phóng (25%–400%), giữ `Space` (hoặc công cụ **Kéo bàn vẽ**) để di chuyển vùng nhìn, và bấm **So sánh gốc** (phím `\`) để đối chiếu nhanh với ảnh gốc. Nhấn `Ctrl/Cmd+D` để nhân bản khung, `Ctrl/Cmd+H` để **Tìm & thay thế** toàn chương, `?` để xem bảng phím tắt, hoặc xuất kịch bản ra **TXT / CSV / JSON**.
 
-## Chỉnh vùng xóa chữ
+Bảng chỉnh khung hỗ trợ **xem trước trực tiếp**, **khớp cỡ chữ tự động** (từng khung hoặc cả trang), **nạp font cục bộ** (`.ttf`, `.otf`, `.woff`, `.woff2`), chữ **Đậm / Nghiêng / IN HOA / Chữ dọc**, **giãn dòng**, **viền chữ (stroke)**, và **hình nền** (`Chữ nhật`, `Bầu dục`, `Bo góc`) kèm màu nền tùy chỉnh. Trên trình duyệt web, ứng dụng còn tự lưu phiên vào IndexedDB để khôi phục nhanh nếu lỡ tải lại tab.
+
+Chọn và lưu một khung, nhập tên trong **Mẫu dàn chữ** rồi bấm **Lưu kiểu khung đang chọn**. Mẫu chứa đầy đủ thuộc tính kiểu chữ, viền và nền. Áp dụng mẫu cho khung đang chọn, mọi khung trên trang hoặc cả chương. Lưu cùng tên sẽ cập nhật mẫu đó. Mẫu được giữ trong tệp dự án.
+
+## Chỉnh vùng xóa chữ và vẽ che thủ công
 
 Chọn khung thoại rồi chọn **Khoanh vùng xóa** và kéo trên ảnh. Vùng này giữ nguyên khi di chuyển chữ. **Cọ giữ nền gốc** loại phần nét vẽ cần giữ khỏi vùng xóa, **Cọ thêm vùng xóa** đưa phần đã loại trở lại. Cỡ cọ tính theo pixel ảnh gốc và chỉ tác động trong vùng đã khoanh. **Đặt lại vùng xóa** bỏ các nét cọ và dùng vùng OCR nếu có, hoặc khung chữ hiện tại.
+
+Ngoài xóa chữ tự động, thanh công cụ còn có **Hút màu** (lấy mã màu pixel trực tiếp từ ảnh), **Cọ vẽ che chữ** (tô màu tùy chọn và độ đục lên lớp redraw) và **Cọ sao chép nền** (`Alt + bấm` vào vùng nền/screentone sạch để đặt điểm nguồn, rồi kéo tô che chữ). Các nét vẽ tay được lưu trong `.khungthoai` và gộp vào lớp `Nền đã xóa chữ` khi xuất PNG/PSD/ZIP.
 
 Bật/tắt **Hiện redraw** và **Hiện chữ** để so sánh với ảnh gốc. Các nút này chỉ điều khiển xem trước. PNG và PSD luôn xuất đầy đủ lớp đang biên tập, bao gồm mặt nạ cọ. Redraw tiếp tục phục hồi các pixel đủ tin cậy bằng thuật toán nền sáng trên web hoặc lõi C# trên desktop.
 

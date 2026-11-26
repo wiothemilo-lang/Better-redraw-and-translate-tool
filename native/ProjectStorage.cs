@@ -16,6 +16,8 @@ internal sealed class ProjectStorage : IDisposable
             case "zipBegin":
             {
                 var path = Path.GetFullPath((string)options["path"]!);
+                if (Path.GetDirectoryName(path) is { Length: > 0 } directory)
+                    Directory.CreateDirectory(directory);
                 var temporary = path + "." + Guid.NewGuid() + ".tmp";
                 var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write);
                 var id = Guid.NewGuid().ToString();

@@ -14,7 +14,11 @@
       <a href="#editor" data-view="editor" aria-current="page">Biên tập</a>
       <a href="#library" data-view="library">Thư viện chương</a>
     </nav>
-    <button type="button" class="button header-export" id="export-all">Xuất cả lượt</button>
+    <div class="header-actions">
+      <button type="button" class="button header-secondary" id="open-find" title="Tìm và thay thế (Ctrl+H)">Tìm &amp; thay</button>
+      <button type="button" class="button header-secondary" id="open-shortcuts" title="Phím tắt (?)">Phím tắt</button>
+      <button type="button" class="button header-export" id="export-all">Xuất cả lượt</button>
+    </div>
   </header>
 
   <main id="editor" class="editor-layout">
@@ -31,6 +35,13 @@
           <div class="form-actions">
             <button type="button" id="recover-project" class="button" hidden>Khôi phục tự lưu</button>
             <button type="button" id="recover-backup" class="button" hidden>Bản tự lưu trước</button>
+          </div>
+        </div>
+        <div id="web-recovery" hidden>
+          <p id="web-autosave-status" class="muted" role="status"></p>
+          <div class="form-actions">
+            <button type="button" id="recover-web" class="button">Khôi phục phiên web</button>
+            <button type="button" id="clear-web-recovery" class="button danger">Bỏ bản lưu</button>
           </div>
         </div>
         <label class="dropzone" id="dropzone" for="images">
@@ -54,6 +65,14 @@
           </select>
         </label>
         <button type="button" id="apply-script" class="button full">Dàn thoại lên ảnh</button>
+        <div class="script-export-row">
+          <select id="export-script-format" aria-label="Định dạng xuất kịch bản">
+            <option value="txt">TXT</option>
+            <option value="csv">CSV (Excel)</option>
+            <option value="json">JSON</option>
+          </select>
+          <button type="button" id="export-script" class="button">Xuất kịch bản</button>
+        </div>
         <details class="translation">
           <summary>Dịch ảnh bằng Gemini</summary>
           <label class="field" for="gemini-key">Khóa API
@@ -119,20 +138,34 @@
         <div class="canvas-actions">
           <button type="button" id="undo" aria-label="Hoàn tác (Ctrl+Z)" disabled>Hoàn tác</button>
           <button type="button" id="redo" aria-label="Làm lại (Ctrl+Shift+Z)" disabled>Làm lại</button>
+          <div class="zoom-group" role="group" aria-label="Thu phóng">
+            <button type="button" id="zoom-out" aria-label="Thu nhỏ">−</button>
+            <span id="zoom-level">Vừa trang</span>
+            <button type="button" id="zoom-in" aria-label="Phóng to">+</button>
+          </div>
           <button type="button" id="fit-page">Vừa trang</button>
+          <button type="button" id="compare-original" aria-pressed="false" title="Giữ hoặc bấm phím \ để xem ảnh gốc">So sánh gốc</button>
           <button type="button" id="add-box" aria-pressed="false">+ Khung chữ</button>
         </div>
       </div>
       <div class="cleanup-toolbar">
         <label for="cleanup-tool">Công cụ
           <select id="cleanup-tool">
-            <option value="text">Di chuyển chữ</option>
+            <option value="text">Di chuyển &amp; chỉnh khung</option>
+            <option value="pan">Kéo bàn vẽ (Hand)</option>
             <option value="region">Khoanh vùng xóa</option>
             <option value="erase">Cọ giữ nền gốc</option>
             <option value="restore">Cọ thêm vùng xóa</option>
+            <option value="paint">Cọ vẽ che chữ</option>
+            <option value="clone">Cọ sao chép nền (Alt+bấm)</option>
+            <option value="eyedropper">Hút màu</option>
           </select>
         </label>
         <label for="brush-size">Cỡ cọ (px)<input id="brush-size" type="number" min="1" max="200" value="20"></label>
+        <label for="paint-color" id="paint-color-field">Màu cọ<input id="paint-color" type="color" value="#ffffff"></label>
+        <label for="paint-opacity" id="paint-opacity-field">Độ đục (%)<input id="paint-opacity" type="number" min="5" max="100" value="100"></label>
+        <span id="eyedropper-readout" class="muted" hidden></span>
+        <button type="button" id="clear-retouch" class="button danger" hidden>Xóa nét vẽ tay</button>
         <label class="choice"><input type="checkbox" id="show-cleanup" checked>Hiện redraw</label>
         <label class="choice"><input type="checkbox" id="show-text" checked>Hiện chữ</label>
       </div>
@@ -154,29 +187,63 @@
     <aside class="inspector" aria-label="Chỉnh khung thoại">
       <section class="side-section">
         <div class="section-heading"><h2>Khung chữ</h2><span id="box-count">0</span></div>
+        <div class="form-actions box-batch-actions">
+          <button type="button" id="autofit-page" class="button full">Khớp cỡ chữ cả trang</button>
+        </div>
         <ol id="boxes" class="box-list" aria-label="Khung của trang hiện tại"></ol>
         <p id="inspector-empty" class="muted">Chọn một khung trên ảnh để chỉnh thoại và kiểu chữ.</p>
         <form id="box-form" hidden>
+          <div class="form-actions box-quick-actions">
+            <button type="button" id="autofit-box" class="button" title="Tự chọn cỡ chữ lớn nhất không tràn khung">Khớp cỡ</button>
+            <button type="button" id="duplicate-box" class="button" title="Nhân bản khung (Ctrl+D)">Nhân bản</button>
+            <button type="button" id="box-layer-up" class="button" title="Đưa khung lên lớp trên">↑ Lớp</button>
+            <button type="button" id="box-layer-down" class="button" title="Đưa khung xuống lớp dưới">↓ Lớp</button>
+          </div>
           <label class="field" for="box-text">Nội dung
             <textarea id="box-text" rows="4" required></textarea>
           </label>
-          <label class="field" for="box-font">Font
-            <select id="box-font">
-              <option value="Arial">Arial</option><option value="Georgia">Georgia</option>
-              <option value="Verdana">Verdana</option><option value="Times New Roman">Times New Roman</option>
-            </select>
-          </label>
+          <div class="font-row">
+            <label class="field" for="box-font">Font
+              <select id="box-font">
+                <option value="Arial">Arial</option><option value="Georgia">Georgia</option>
+                <option value="Verdana">Verdana</option><option value="Times New Roman">Times New Roman</option>
+              </select>
+            </label>
+            <label for="font-file" class="button font-upload" title="Nạp font .ttf, .otf, .woff, .woff2">+ Nạp font</label>
+            <input id="font-file" type="file" accept=".ttf,.otf,.woff,.woff2" class="sr-only">
+          </div>
+          <div class="style-toggles" role="group" aria-label="Kiểu chữ">
+            <label class="choice"><input id="box-bold" type="checkbox"> Đậm</label>
+            <label class="choice"><input id="box-italic" type="checkbox"> Nghiêng</label>
+            <label class="choice"><input id="box-uppercase" type="checkbox"> IN HOA</label>
+            <label class="choice"><input id="box-vertical" type="checkbox"> Chữ dọc</label>
+          </div>
           <div class="two-fields">
             <label class="field" for="box-size">Cỡ (px)<input id="box-size" type="number" min="8" max="400" required></label>
-            <label class="field" for="box-color">Màu<input id="box-color" type="color"></label>
+            <label class="field" for="box-line-height">Giãn dòng<input id="box-line-height" type="number" min="0.8" max="2.2" step="0.05" value="1.15" required></label>
           </div>
           <div class="two-fields">
-            <label class="field" for="box-align">Canh chữ
-              <select id="box-align"><option value="center">Giữa</option><option value="left">Trái</option><option value="right">Phải</option></select>
-            </label>
+            <label class="field" for="box-color">Màu chữ<input id="box-color" type="color"></label>
             <label class="field" for="box-rotation">Góc (°)<input id="box-rotation" type="number" min="-180" max="180" required></label>
           </div>
-          <label class="choice"><input id="box-fill" type="checkbox"> Nền trắng dưới thoại</label>
+          <label class="field" for="box-align">Canh chữ
+            <select id="box-align"><option value="center">Giữa</option><option value="left">Trái / Trên</option><option value="right">Phải / Dưới</option></select>
+          </label>
+          <div class="two-fields">
+            <label class="field" for="box-stroke-width">Viền chữ (px)<input id="box-stroke-width" type="number" min="0" max="24" step="0.5" value="0" required></label>
+            <label class="field" for="box-stroke-color">Màu viền<input id="box-stroke-color" type="color" value="#ffffff"></label>
+          </div>
+          <label class="choice"><input id="box-fill" type="checkbox"> Nền dưới thoại</label>
+          <div class="two-fields">
+            <label class="field" for="box-fill-shape">Hình nền
+              <select id="box-fill-shape">
+                <option value="rect">Chữ nhật</option>
+                <option value="ellipse">Bầu dục</option>
+                <option value="rounded">Bo góc</option>
+              </select>
+            </label>
+            <label class="field" for="box-fill-color">Màu nền<input id="box-fill-color" type="color" value="#ffffff"></label>
+          </div>
           <label class="choice"><input id="box-cleanup" type="checkbox"> Xóa chữ gốc trong khung</label>
           <div class="form-actions">
             <button type="submit" class="button primary">Lưu khung</button>
@@ -260,6 +327,46 @@
     <div class="form-actions">
       <button type="button" id="close-preflight" class="button">Đóng</button>
       <button type="button" id="continue-export" class="button primary">Vẫn xuất</button>
+    </div>
+  </dialog>
+  <dialog id="find-replace-dialog">
+    <h2>Tìm và thay thế trong chương</h2>
+    <label class="field" for="find-query">Tìm kiếm
+      <input id="find-query" type="search" placeholder="Nhập từ hoặc cụm thoại cần tìm">
+    </label>
+    <label class="field" for="replace-text">Thay bằng
+      <input id="replace-text" type="text" placeholder="Nội dung thay thế">
+    </label>
+    <div class="style-toggles">
+      <label class="choice"><input id="find-case" type="checkbox"> Phân biệt hoa/thường</label>
+      <label class="choice"><input id="find-word" type="checkbox"> Khớp nguyên từ</label>
+      <label class="choice"><input id="find-unplaced" type="checkbox"> Gồm câu chưa đặt</label>
+    </div>
+    <p id="find-summary" class="muted" role="status"></p>
+    <ol id="find-results" class="box-list"></ol>
+    <div class="form-actions">
+      <button type="button" id="replace-all-btn" class="button primary">Thay tất cả</button>
+      <button type="button" id="close-find" class="button">Đóng</button>
+    </div>
+  </dialog>
+  <dialog id="shortcuts-dialog">
+    <h2>Phím tắt biên tập</h2>
+    <dl class="shortcuts-list">
+      <div><dt>Ctrl / Cmd + Z</dt><dd>Hoàn tác</dd></div>
+      <div><dt>Ctrl / Cmd + Shift + Z / Y</dt><dd>Làm lại</dd></div>
+      <div><dt>Ctrl / Cmd + D</dt><dd>Nhân bản khung đang chọn</dd></div>
+      <div><dt>Ctrl / Cmd + H hoặc F</dt><dd>Tìm và thay thế trong chương</dd></div>
+      <div><dt>Ctrl + Cuộn chuột</dt><dd>Thu phóng bản vẽ (25%–400%)</dd></div>
+      <div><dt>Giữ Space + Kéo / Chuột giữa</dt><dd>Kéo bàn vẽ (Pan)</dd></div>
+      <div><dt>Phím \</dt><dd>Bật/tắt so sánh với ảnh gốc</dd></div>
+      <div><dt>Shift + Kéo tay cầm xoay</dt><dd>Xoay khung theo nấc 15°</dd></div>
+      <div><dt>Alt + Bấm (Cọ sao chép)</dt><dd>Chọn điểm nguồn sao chép nền</dd></div>
+      <div><dt>Mũi tên (khi chọn khung)</dt><dd>Dịch khung 1 px (giữ Shift: 10 px)</dd></div>
+      <div><dt>Delete / Backspace</dt><dd>Xóa khung đang chọn</dd></div>
+      <div><dt>Enter (trên ảnh)</dt><dd>Thêm khung chữ ở giữa trang</dd></div>
+    </dl>
+    <div class="form-actions">
+      <button type="button" id="close-shortcuts" class="button primary">Đóng</button>
     </div>
   </dialog>
   <dialog id="zip-dialog">

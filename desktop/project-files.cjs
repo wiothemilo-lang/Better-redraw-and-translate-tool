@@ -29,6 +29,7 @@ class ProjectFiles {
       file = selection.filePaths[0]
     }
     const { result: info } = await this.worker.call("fileOpen", { path: file })
+    if (mode !== "recovery" && mode !== "backup") this.projectPath = file
     const id = randomUUID()
     this.readers.set(id, { nativeId: info.id, size: info.size, offset: 0 })
     return { id, name: path.basename(file), size: info.size }

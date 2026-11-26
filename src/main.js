@@ -1,4 +1,5 @@
-import { clamp, drawPage, exportPage, makeBox, textOverflows, nativePageLayers } from "./canvas.js"
+import { autoFitBox, clamp, drawPage, exportPage, makeBox, textOverflows, nativePageLayers } from "./canvas.js"
+import { allFonts, loadCustomFont, registerFontName } from "./fonts.js"
 import { filenameStem, groupDialogue, isImageFile, readDialogueFile, saveFile } from "./io.js"
 import { alignScript, translateImage } from "./gemini.js"
 import { setupLibrary } from "./library.js"
@@ -7,7 +8,10 @@ import { projectExtension, projectPageLimit as pageLimit, projectSettingIds, rea
 
 import { copyEditor, EditHistory } from "./history.js"
 import { cleanupRectangle, paintCleanupMask } from "./cleanup.js"
+import { samplePixelColor } from "./retouch.js"
+import { duplicateBox, exportDialogueScript, findMatches, nudgeBox, reorderBox, replaceMatches, resizeBox, rotateBox } from "./tools.js"
 import { remainingTranslations, translationLabel, translationSignature } from "./translation.js"
+import { clearWebSnapshot, getWebSnapshotInfo, loadWebSnapshot, saveWebSnapshot } from "./web-storage.js"
 
 import { desktop, nativeCapabilities, saveDesktopProject, openDesktopProject, imagePixels } from "./native.js"
 
@@ -15,13 +19,14 @@ const history = new EditHistory()
 const ownedUrls = new Set()
 const byId = (id) => document.getElementById(id)
 const stage = byId("stage")
+const viewport = byId("viewport")
 const overlays = byId("overlays")
 const pageCanvas = byId("page-canvas")
 const form = byId("box-form")
 const editorStatus = byId("status")
 const exportButtons = [...document.querySelectorAll("[data-export]")]
 const state = {
-  pages: [], presets: [], pageId: null, boxId: null, queue: [], placing: false, fit: true,
+  pages: [], presets: [], pageId: null, boxId: null, queue: [], placing: false, fit: true, zoom: 1, compareOriginal: false,
   exporting: false, importing: false, translating: false, importingScript: false, openingProject: false, processingNative: false, savingProject: false,
 }
 const projectSettings = projectSettingIds.map(byId)
@@ -30,6 +35,7 @@ const projectFile = byId("project-file")
 let projectName
 let gesture
 let pendingPaint
+let pendingOverlay
 let previewRedraw
 let translationController
 let nativeReady = false
@@ -37,11 +43,16 @@ let nativeLanguages = []
 let revision = 0
 let savedRevision = 0
 let autosaving = false
+let cloneOrigin = null
+let spacePan = false
+let formEditSnapshot = null
+let formEditBoxId = null
 
 const selectedPage = () => state.pages.find((page) => page.id === state.pageId)
 const selectedBox = () => selectedPage()?.boxes.find((box) => box.id === state.boxId)
 const selectedIndex = () => state.pages.findIndex((page) => page.id === state.pageId)
 const boxFields = { text: "box-text", size: "box-size", font: "box-font", color: "box-color", align: "box-align", rotation: "box-rotation" }
+const resizeHandles = ["nw", "n", "ne", "e", "se", "s", "sw", "w"]
 
 function editorSnapshot() {
   return copyEditor({
@@ -83,12 +94,65 @@ function restoreHistory(direction) {
 byId("undo").onclick = () => restoreHistory("undo")
 byId("redo").onclick = () => restoreHistory("redo")
 document.addEventListener("keydown", (event) => {
-  if (!(event.ctrlKey || event.metaKey) || event.altKey ||
-      event.target.closest("input, textarea, select, [contenteditable]")) return
+  const editingField = Boolean(event.target.closest("input, textarea, select, [contenteditable]"))
+  if (event.code === "Space" && !editingField && !event.repeat && selectedPage()) {
+    spacePan = true
+    stage.classList.add("panning")
+    event.preventDefault()
+    return
+  }
   const key = event.key.toLowerCase()
-  if (key !== "z" && key !== "y") return
-  event.preventDefault()
-  restoreHistory(key === "y" || event.shiftKey ? "redo" : "undo")
+  if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+    if (!editingField && (key === "z" || key === "y")) {
+      event.preventDefault()
+      restoreHistory(key === "y" || event.shiftKey ? "redo" : "undo")
+      return
+    }
+    if (!editingField && key === "d" && selectedBox()) {
+      event.preventDefault()
+      duplicateSelectedBox()
+      return
+    }
+    if (key === "h" || (key === "f" && !editingField)) {
+      event.preventDefault()
+      openFindDialog()
+      return
+    }
+  }
+  if (editingField || event.ctrlKey || event.metaKey || event.altKey) return
+  if (event.key === "\\") {
+    if (!selectedPage()) return
+    event.preventDefault()
+    toggleCompareOriginal()
+  } else if (event.key === "?") {
+    event.preventDefault()
+    byId("shortcuts-dialog").showModal()
+  } else if ((event.key === "Delete" || event.key === "Backspace") && selectedBox() && !projectBusy()) {
+    event.preventDefault()
+    deleteSelectedBox()
+  } else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && selectedBox() && !projectBusy()) {
+    const page = selectedPage()
+    const box = selectedBox()
+    if (!page || !box) return
+    event.preventDefault()
+    const step = event.shiftKey ? 10 : 1
+    const dx = event.key === "ArrowLeft" ? -step / page.image.naturalWidth : event.key === "ArrowRight" ? step / page.image.naturalWidth : 0
+    const dy = event.key === "ArrowUp" ? -step / page.image.naturalHeight : event.key === "ArrowDown" ? step / page.image.naturalHeight : 0
+    checkpoint()
+    Object.assign(box, nudgeBox(box, dx, dy))
+    renderCanvas()
+    renderInspector()
+  }
+})
+document.addEventListener("keyup", (event) => {
+  if (event.code === "Space" && spacePan) {
+    spacePan = false
+    if (byId("cleanup-tool").value !== "pan") stage.classList.remove("panning")
+  }
+})
+window.addEventListener("blur", () => {
+  spacePan = false
+  if (byId("cleanup-tool").value !== "pan") stage.classList.remove("panning")
 })
 for (const field of projectSettings) {
   field.addEventListener("input", () => { revision++ })
@@ -128,7 +192,8 @@ window.addEventListener("hashchange", setView)
 setView()
 
 function selectPage(page) {
-  if (gesture) {
+  commitLiveFormCheckpoint()
+  if (gesture?.before) {
     const { settings, ...editor } = gesture.before
     Object.assign(state, editor)
     page = state.pages.find((item) => item.id === page?.id)
@@ -137,6 +202,7 @@ function selectPage(page) {
   state.boxId = null
   state.placing = false
   gesture = undefined
+  cloneOrigin = null
   render()
 }
 
@@ -199,13 +265,20 @@ function renderPages() {
   byId("prev-page").disabled = current <= 0
   byId("next-page").disabled = current < 0 || current >= count - 1
   byId("apply-script").disabled = current < 0 || projectBusy()
-  byId("translate").disabled = current < 0 || state.translating || state.openingProject
-  byId("align-script").disabled = current < 0 || state.translating || state.openingProject
-  byId("translate-all").disabled = !count || state.translating || state.openingProject
+  byId("export-script").disabled = !count || projectBusy()
+  byId("translate").disabled = current < 0 || projectBusy()
+  byId("align-script").disabled = current < 0 || projectBusy()
+  byId("translate-all").disabled = !count || projectBusy()
+  byId("zoom-out").disabled = current < 0
+  byId("zoom-in").disabled = current < 0
   byId("fit-page").disabled = current < 0
+  byId("compare-original").disabled = current < 0
   byId("add-box").disabled = current < 0 || projectBusy()
-  byId("export-all").disabled = !count || state.exporting || state.openingProject
-  exportButtons.forEach((button) => { button.disabled = current < 0 || state.exporting || state.openingProject })
+  byId("export-all").disabled = !count || projectBusy()
+  exportButtons.forEach((button) => { button.disabled = current < 0 || projectBusy() })
+  byId("autofit-page").disabled = current < 0 || !(selectedPage()?.boxes.length) || projectBusy()
+  byId("clear-retouch").hidden = !(selectedPage()?.retouchStrokes?.length)
+  byId("clear-retouch").disabled = projectBusy()
   syncProjectActions()
   byId("box-form").inert = projectBusy()
   projectSettings.forEach((field) => { field.disabled = state.translating || state.openingProject })
@@ -246,7 +319,9 @@ function rectStyle(element, rect) {
 }
 
 function paintPreview(page) {
-  const pending = drawPage(pageCanvas, page, { showCleanup: byId("show-cleanup").checked, showText: byId("show-text").checked })
+  const showCleanup = !state.compareOriginal && byId("show-cleanup").checked
+  const showText = !state.compareOriginal && byId("show-text").checked
+  const pending = drawPage(pageCanvas, page, { showCleanup, showText })
   if (!pending || previewRedraw === pending) return
   previewRedraw = pending
   pending.then(() => {
@@ -262,18 +337,27 @@ function renderCanvas() {
     pendingPaint = undefined
   }
   const page = selectedPage()
+  const tool = byId("cleanup-tool").value
   stage.hidden = !page
   byId("canvas-empty").hidden = Boolean(page)
   byId("add-box").setAttribute("aria-pressed", String(state.placing))
+  byId("compare-original").setAttribute("aria-pressed", String(state.compareOriginal))
   stage.classList.toggle("placing", state.placing)
-  stage.classList.toggle("cleaning", byId("cleanup-tool").value !== "text")
+  stage.classList.toggle("panning", tool === "pan" || spacePan)
+  stage.classList.toggle("eyedropper", tool === "eyedropper")
+  stage.classList.toggle("cleaning", ["region", "erase", "restore", "paint", "clone"].includes(tool))
+  overlays.hidden = state.compareOriginal
+  byId("cleanup-overlay").hidden = state.compareOriginal
   if (!page) {
     overlays.replaceChildren()
     pageCanvas.width = 1
     pageCanvas.height = 1
     return
   }
-  stage.style.width = Math.min(page.image.naturalWidth, state.fit ? 720 : Infinity) + "px"
+  const stageWidth = state.fit
+    ? Math.min(page.image.naturalWidth, 720)
+    : Math.max(120, Math.round(page.image.naturalWidth * state.zoom))
+  stage.style.width = stageWidth + "px"
   stage.style.maxWidth = state.fit ? "100%" : "none"
   stage.style.flexShrink = state.fit ? "1" : "0"
   paintPreview(page)
@@ -281,10 +365,31 @@ function renderCanvas() {
     const outline = listButton("", () => selectBox(box), box.text)
     outline.className = "outline"
     outline.dataset.box = box.id
-    if (box.id === state.boxId) outline.setAttribute("aria-current", "true")
+    if (box.id === state.boxId) {
+      outline.setAttribute("aria-current", "true")
+      for (const handle of resizeHandles) {
+        const dot = document.createElement("span")
+        dot.className = "resize-handle"
+        dot.dataset.handle = handle
+        dot.dataset.box = box.id
+        outline.append(dot)
+      }
+      const rotator = document.createElement("span")
+      rotator.className = "rotate-handle"
+      rotator.dataset.rotate = box.id
+      rotator.title = "Kéo để xoay (giữ Shift: nấc 15°)"
+      outline.append(rotator)
+    }
     rectStyle(outline, box)
     return outline
   }))
+  if (tool === "clone" && cloneOrigin) {
+    const marker = document.createElement("div")
+    marker.className = "clone-marker"
+    marker.style.left = cloneOrigin.x * 100 + "%"
+    marker.style.top = cloneOrigin.y * 100 + "%"
+    overlays.append(marker)
+  }
   renderCleanupOverlay()
 }
 
@@ -294,18 +399,29 @@ function freezeCleanup(box) {
   box.cleanupRect = { x, y, w, h }
 }
 
+function scheduleCleanupOverlay() {
+  pendingOverlay ??= requestAnimationFrame(() => {
+    pendingOverlay = undefined
+    renderCleanupOverlay()
+  })
+}
+
 function renderCleanupOverlay() {
   const canvas = byId("cleanup-overlay")
   canvas.width = pageCanvas.width
   canvas.height = pageCanvas.height
   const box = selectedBox()
-  if (!box || byId("cleanup-tool").value === "text") return
+  const tool = byId("cleanup-tool").value
+  if (!box || !["region", "erase", "restore"].includes(tool)) return
   const rect = cleanupRectangle(box)
-  const left = Math.floor(rect.x * canvas.width)
-  const top = Math.floor(rect.y * canvas.height)
+  const left = Math.max(0, Math.floor(rect.x * canvas.width))
+  const top = Math.max(0, Math.floor(rect.y * canvas.height))
+  const right = Math.min(canvas.width, Math.ceil((rect.x + rect.w) * canvas.width))
+  const bottom = Math.min(canvas.height, Math.ceil((rect.y + rect.h) * canvas.height))
+  if (right <= left || bottom <= top) return
   const mask = document.createElement("canvas")
-  mask.width = Math.ceil((rect.x + rect.w) * canvas.width) - left
-  mask.height = Math.ceil((rect.y + rect.h) * canvas.height) - top
+  mask.width = Math.max(1, right - left)
+  mask.height = Math.max(1, bottom - top)
   paintCleanupMask(mask, box, selectedPage().image, left, top)
   const context = mask.getContext("2d")
   context.globalCompositeOperation = "source-in"
@@ -343,6 +459,7 @@ byId("save-preset").onclick = () => {
   byId("style-preset").value = String(index < 0 ? state.presets.length - 1 : index)
   status("Đã lưu mẫu " + name + ".")
 }
+const optionalStyleKeys = ["bold", "italic", "uppercase", "vertical", "lineHeight", "strokeWidth", "strokeColor", "fillColor", "fillShape"]
 byId("apply-preset").onclick = () => {
   const preset = state.presets[Number(byId("style-preset").value)]
   if (!preset || projectBusy()) return
@@ -351,7 +468,10 @@ byId("apply-preset").onclick = () => {
   const boxes = scope === "box" ? [selectedBox()].filter(Boolean) : pages.flatMap((page) => page.boxes)
   if (!boxes.length) return status("Hãy chọn khung để áp dụng mẫu.", true)
   checkpoint()
-  boxes.forEach((box) => Object.assign(box, preset.style))
+  boxes.forEach((box) => {
+    for (const key of optionalStyleKeys) delete box[key]
+    Object.assign(box, preset.style)
+  })
   render()
   status(`Đã áp dụng mẫu cho ${boxes.length} khung.`)
 }
@@ -373,13 +493,60 @@ byId("reset-cleanup").onclick = () => {
 }
 byId("cleanup-tool").onchange = () => {
   state.placing = false
+  const tool = byId("cleanup-tool").value
   renderCanvas()
-  if (byId("cleanup-tool").value !== "text") status("Chọn khung thoại rồi khoanh vùng hoặc vẽ cọ trên ảnh.")
+  const messages = {
+    pan: "Kéo trên ảnh để di chuyển vùng nhìn (hoặc giữ phím Space).",
+    region: "Chọn khung thoại rồi khoanh vùng xóa chữ trên ảnh.",
+    erase: "Chọn khung thoại rồi tô cọ để giữ lại nét vẽ gốc.",
+    restore: "Chọn khung thoại rồi tô cọ để thêm lại vùng xóa.",
+    paint: "Kéo trên ảnh để vẽ che chữ bằng màu cọ đã chọn.",
+    clone: "Giữ Alt và bấm vào nền sạch để đặt điểm nguồn, sau đó kéo để sao chép nền.",
+    eyedropper: "Bấm vào ảnh để hút màu cho cọ vẽ.",
+  }
+  if (messages[tool]) status(messages[tool])
+}
+byId("clear-retouch").onclick = () => {
+  const page = selectedPage()
+  if (!page?.retouchStrokes?.length || projectBusy()) return
+  checkpoint()
+  page.retouchStrokes = []
+  render()
+  status("Đã xóa toàn bộ nét vẽ/sao chép tay trên trang này.")
 }
 byId("show-cleanup").onchange = renderCanvas
 byId("show-text").onchange = renderCanvas
 
+function syncFontOptions(selected) {
+  const select = byId("box-font")
+  if (selected) registerFontName(selected)
+  const fonts = allFonts()
+  select.replaceChildren(...fonts.map((name) => new Option(name, name)))
+  if (selected && fonts.includes(selected)) select.value = selected
+}
+
+byId("font-file").onchange = async (event) => {
+  const file = event.target.files[0]
+  event.target.value = ""
+  if (!file) return
+  try {
+    const family = await loadCustomFont(file)
+    syncFontOptions(family)
+    const box = selectedBox()
+    if (box && !projectBusy()) {
+      checkpoint()
+      box.font = family
+      byId("box-font").value = family
+      renderCanvas()
+    }
+    status(`Đã nạp font "${family}".`)
+  } catch (error) {
+    status("Không nạp được font. " + error.message, true)
+  }
+}
+
 function selectBox(box) {
+  if (state.boxId !== box.id) commitLiveFormCheckpoint()
   state.boxId = box.id
   renderCanvas()
   renderInspector()
@@ -393,13 +560,27 @@ function renderInspector() {
   byId("cleanup-inspector").hidden = !box
   byId("reset-cleanup").disabled = projectBusy()
   byId("box-count").textContent = boxes.length
+  byId("autofit-page").disabled = !boxes.length || projectBusy()
   byId("inspector-empty").hidden = Boolean(box)
   form.hidden = !box
   if (box) {
+    syncFontOptions(box.font)
     for (const [key, id] of Object.entries(boxFields)) byId(id).value = box[key]
+    byId("box-line-height").value = box.lineHeight ?? 1.15
+    byId("box-stroke-width").value = box.strokeWidth ?? 0
+    byId("box-stroke-color").value = box.strokeColor ?? "#ffffff"
+    byId("box-fill-shape").value = box.fillShape ?? "rect"
+    byId("box-fill-color").value = box.fillColor ?? "#ffffff"
+    byId("box-bold").checked = Boolean(box.bold)
+    byId("box-italic").checked = Boolean(box.italic)
+    byId("box-uppercase").checked = Boolean(box.uppercase)
+    byId("box-vertical").checked = Boolean(box.vertical)
     byId("cleanup-expand").value = box.cleanupExpand ?? 0
     byId("box-fill").checked = box.fill
     byId("box-cleanup").checked = Boolean(box.cleanup)
+    const boxIndex = boxes.findIndex((item) => item.id === box.id)
+    byId("box-layer-up").disabled = boxIndex >= boxes.length - 1 || projectBusy()
+    byId("box-layer-down").disabled = boxIndex <= 0 || projectBusy()
   }
   byId("boxes").replaceChildren(...boxes.map((item) => {
     const li = document.createElement("li")
@@ -465,9 +646,11 @@ byId("save-project").onclick = async () => {
       state.savingProject = true
       renderPages()
       if (!await saveDesktopProject(file, "project", name + projectExtension)) return
+      savedRevision = revision
       status("Đã lưu dự án vào máy.")
     } else {
       saveFile(file, name + projectExtension)
+      savedRevision = revision
       status("Đã tạo tệp dự án.")
     }
   } catch (error) {
@@ -510,8 +693,12 @@ async function loadProject(file) {
       } catch {
         throw new Error("Không đọc được ảnh trong dự án: " + saved.file.name)
       }
-      page.boxes = saved.boxes.map((box) => ({ ...box, id: crypto.randomUUID() }))
+      page.boxes = saved.boxes.map((box) => {
+        registerFontName(box.font)
+        return { ...box, id: crypto.randomUUID() }
+      })
       page.unplaced = saved.unplaced
+      page.retouchStrokes = saved.retouchStrokes ?? []
       page.translationContext = saved.translationContext
       page.translationJob = saved.translationJob
       loaded.push(page)
@@ -523,14 +710,20 @@ async function loadProject(file) {
       return
     }
     revision++
+    savedRevision = revision
     history.clear()
+    project.presets.forEach(({ style }) => registerFontName(style.font))
     state.pages = loaded
     state.queue = project.queue
     state.presets = project.presets
     state.fit = project.fit
+    state.zoom = 1
+    cloneOrigin = null
     updateFitLabel()
     projectSettings.forEach((field) => { field.value = project.settings[field.id] })
-    projectName = filenameStem(file.name)
+    if (file.name !== "recovery.khungthoai" && file.name !== "recovery.khungthoai.bak") {
+      projectName = filenameStem(file.name)
+    }
     selectPage(loaded[project.currentPage])
     status(`Đã mở dự án với ${loaded.length} trang.`)
   } catch (error) {
@@ -599,12 +792,44 @@ setupLibrary(async (files) => {
 byId("prev-page").onclick = () => changePage(-1)
 byId("next-page").onclick = () => changePage(1)
 function updateFitLabel() {
-  byId("fit-page").textContent = state.fit ? "Vừa trang" : "Kích thước gốc"
+  byId("fit-page").textContent = state.fit ? "100%" : "Vừa trang"
+  byId("zoom-level").textContent = state.fit ? "Vừa trang" : Math.round(state.zoom * 100) + "%"
 }
-byId("fit-page").onclick = () => {
-  state.fit = !state.fit
+function setZoom(next) {
+  state.fit = false
+  state.zoom = clamp(Math.round(next * 100) / 100, .25, 4)
   updateFitLabel()
   renderCanvas()
+}
+function toggleCompareOriginal() {
+  state.compareOriginal = !state.compareOriginal
+  renderCanvas()
+  status(state.compareOriginal ? "Đang xem ảnh gốc (nhấn \\ để quay lại)." : "Đã quay lại bản biên tập.")
+}
+byId("zoom-in").onclick = () => setZoom((state.fit ? 1 : state.zoom) + .25)
+byId("zoom-out").onclick = () => setZoom((state.fit ? 1 : state.zoom) - .25)
+byId("fit-page").onclick = () => {
+  state.fit = !state.fit
+  if (!state.fit) state.zoom = 1
+  updateFitLabel()
+  renderCanvas()
+}
+byId("compare-original").onclick = toggleCompareOriginal
+viewport.addEventListener("wheel", (event) => {
+  if (!(event.ctrlKey || event.metaKey) || !selectedPage()) return
+  event.preventDefault()
+  const base = state.fit ? 1 : state.zoom
+  setZoom(base + (event.deltaY < 0 ? .15 : -.15))
+}, { passive: false })
+
+byId("export-script").onclick = () => {
+  if (!state.pages.length || projectBusy()) return
+  const format = byId("export-script-format").value
+  const content = exportDialogueScript(state.pages, format)
+  const mime = { txt: "text/plain;charset=utf-8", csv: "text/csv;charset=utf-8", json: "application/json;charset=utf-8" }[format]
+  const name = (projectName ?? filenameStem(state.pages[0]?.name ?? "khung-thoai")) + "-kich-ban." + format
+  saveFile(new Blob([content], { type: mime }), name)
+  status(`Đã xuất kịch bản (${format.toUpperCase()}).`)
 }
 byId("script-file").onchange = async (event) => {
   const file = event.target.files[0]
@@ -709,14 +934,89 @@ function placement(a, b) {
 }
 
 stage.addEventListener("pointerdown", (event) => {
+  const page = selectedPage()
+  if (!page) return
+  const tool = byId("cleanup-tool").value
+  if (event.button === 1 || (event.button === 0 && (spacePan || tool === "pan"))) {
+    event.preventDefault()
+    stage.setPointerCapture(event.pointerId)
+    stage.classList.add("dragging-pan")
+    gesture = {
+      pointer: event.pointerId, pan: true,
+      clientX: event.clientX, clientY: event.clientY,
+      scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop,
+    }
+    return
+  }
   if (event.button !== 0 || projectBusy()) return
   const origin = point(event)
-  const tool = byId("cleanup-tool").value
-  const box = tool === "text" ? selectedPage()?.boxes.find((item) => item.id === event.target.dataset.box) : selectedBox()
+
+  if (tool === "eyedropper") {
+    event.preventDefault()
+    const sampled = samplePixelColor(page.image, origin)
+    if (!sampled) return
+    byId("paint-color").value = sampled
+    const readout = byId("eyedropper-readout")
+    readout.textContent = sampled.toUpperCase()
+    readout.hidden = false
+    status(`Đã hút màu ${sampled.toUpperCase()} cho cọ vẽ.`)
+    return
+  }
+
+  const before = editorSnapshot()
+  if (tool === "paint" || tool === "clone") {
+    event.preventDefault()
+    if (tool === "clone" && event.altKey) {
+      cloneOrigin = origin
+      renderCanvas()
+      status("Đã đặt điểm nguồn sao chép. Kéo trên ảnh để tô.")
+      return
+    }
+    if (tool === "clone" && !cloneOrigin) {
+      status("Giữ Alt và bấm vào vùng nền sạch để đặt điểm nguồn sao chép trước.", true)
+      return
+    }
+    stage.setPointerCapture(event.pointerId)
+    const size = clamp(Number(byId("brush-size").value) || 20, 1, 200)
+    const opacity = clamp((Number(byId("paint-opacity").value) || 100) / 100, .05, 1)
+    const stroke = tool === "paint"
+      ? { mode: "paint", size: size / Math.min(pageCanvas.width, pageCanvas.height), color: byId("paint-color").value, opacity, points: [origin] }
+      : { mode: "clone", size: size / Math.min(pageCanvas.width, pageCanvas.height), offsetX: cloneOrigin.x - origin.x, offsetY: cloneOrigin.y - origin.y, opacity, points: [origin] }
+    page.retouchStrokes ??= []
+    page.retouchStrokes.push(stroke)
+    gesture = { pointer: event.pointerId, retouchStroke: stroke, before }
+    paintPreview(page)
+    return
+  }
+
+  const rotateTarget = event.target.dataset?.rotate
+  if (tool === "text" && rotateTarget) {
+    const box = page.boxes.find((item) => item.id === rotateTarget)
+    if (!box) return
+    event.preventDefault()
+    stage.setPointerCapture(event.pointerId)
+    gesture = { pointer: event.pointerId, box, rotating: true, startRotation: box.rotation, before }
+    return
+  }
+
+  const handle = event.target.dataset?.handle
+  if (tool === "text" && handle) {
+    const box = page.boxes.find((item) => item.id === event.target.dataset.box)
+    if (!box) return
+    event.preventDefault()
+    stage.setPointerCapture(event.pointerId)
+    if (box.cleanup) freezeCleanup(box)
+    gesture = {
+      pointer: event.pointerId, box, handle, origin,
+      start: { x: box.x, y: box.y, w: box.w, h: box.h }, before,
+    }
+    return
+  }
+
+  const box = tool === "text" ? page.boxes.find((item) => item.id === event.target.dataset.box) : selectedBox()
   if (!box && !state.placing) return
   event.preventDefault()
   stage.setPointerCapture(event.pointerId)
-  const before = editorSnapshot()
   if (tool !== "text") {
     if (!box) return
     freezeCleanup(box)
@@ -727,7 +1027,7 @@ stage.addEventListener("pointerdown", (event) => {
       box.cleanupStrokes ??= []
       box.cleanupStrokes.push(stroke)
       gesture = { pointer: event.pointerId, box, stroke, before }
-      renderCleanupOverlay()
+      scheduleCleanupOverlay()
       return
     }
   } else if (box) {
@@ -744,10 +1044,45 @@ stage.addEventListener("pointerdown", (event) => {
 
 stage.addEventListener("pointermove", (event) => {
   if (gesture?.pointer !== event.pointerId) return
+  if (gesture.pan) {
+    viewport.scrollLeft = gesture.scrollLeft - (event.clientX - gesture.clientX)
+    viewport.scrollTop = gesture.scrollTop - (event.clientY - gesture.clientY)
+    return
+  }
   const cursor = point(event)
-  if (gesture.stroke) {
+  if (gesture.retouchStroke) {
+    gesture.retouchStroke.points.push(cursor)
+    pendingPaint ??= requestAnimationFrame(() => {
+      pendingPaint = undefined
+      const page = selectedPage()
+      if (page) paintPreview(page)
+    })
+  } else if (gesture.rotating) {
+    const { box } = gesture
+    const center = { x: box.x + box.w / 2, y: box.y + box.h / 2 }
+    box.rotation = rotateBox(center, cursor, { snap: event.shiftKey })
+    const outline = overlays.querySelector('[aria-current="true"]')
+    if (outline) outline.style.transform = box.rotation ? "rotate(" + box.rotation + "deg)" : ""
+    byId("box-rotation").value = box.rotation
+    pendingPaint ??= requestAnimationFrame(() => {
+      pendingPaint = undefined
+      const page = selectedPage()
+      if (page) paintPreview(page)
+    })
+  } else if (gesture.handle) {
+    const { box, handle, origin, start } = gesture
+    const next = resizeBox(start, handle, { x: cursor.x - origin.x, y: cursor.y - origin.y })
+    Object.assign(box, next)
+    const outline = overlays.querySelector('[aria-current="true"]')
+    if (outline) rectStyle(outline, box)
+    pendingPaint ??= requestAnimationFrame(() => {
+      pendingPaint = undefined
+      const page = selectedPage()
+      if (page) paintPreview(page)
+    })
+  } else if (gesture.stroke) {
     gesture.stroke.points.push(cursor)
-    renderCleanupOverlay()
+    scheduleCleanupOverlay()
   } else if (gesture.box) {
     const { box, origin, start } = gesture
     box.x = clamp(start.x + cursor.x - origin.x, 0, 1 - box.w)
@@ -768,9 +1103,16 @@ stage.addEventListener("pointerup", (event) => {
   if (gesture?.pointer !== event.pointerId) return
   const completed = gesture
   gesture = undefined
-  if (completed.draft || completed.stroke || completed.box.x !== completed.start.x || completed.box.y !== completed.start.y) {
-    checkpoint(completed.before)
+  if (completed.pan) {
+    stage.classList.remove("dragging-pan")
+    return
   }
+  const changed = completed.draft || completed.stroke || completed.retouchStroke ||
+    (completed.rotating && completed.box.rotation !== completed.startRotation) ||
+    (completed.handle && (completed.box.x !== completed.start.x || completed.box.y !== completed.start.y ||
+      completed.box.w !== completed.start.w || completed.box.h !== completed.start.h)) ||
+    (completed.box && completed.start && (completed.box.x !== completed.start.x || completed.box.y !== completed.start.y))
+  if (changed) checkpoint(completed.before)
   if (completed.cleanupBox) {
     completed.cleanupBox.cleanupRect = placement(completed.origin, point(event))
     completed.cleanupBox.cleanupStrokes = []
@@ -781,9 +1123,11 @@ stage.addEventListener("pointerup", (event) => {
 })
 stage.addEventListener("pointercancel", (event) => {
   if (gesture?.pointer !== event.pointerId) return
-  const { before } = gesture
+  const completed = gesture
   gesture = undefined
-  const { settings, ...editor } = before
+  stage.classList.remove("dragging-pan")
+  if (completed.pan) return
+  const { settings, ...editor } = completed.before
   Object.assign(state, editor)
   render()
 })
@@ -796,44 +1140,159 @@ stage.addEventListener("keydown", (event) => {
     byId("box-text").focus()
   } else if (event.key === "Escape") {
     state.placing = false
+    state.boxId = null
     renderCanvas()
-  } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    renderInspector()
+  } else if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && !selectedBox()) {
     const rtl = byId("direction").value === "rtl"
     changePage((event.key === "ArrowLeft") === rtl ? 1 : -1)
     event.preventDefault()
   }
 })
 
+function applyFormToBox(box) {
+  const text = byId("box-text").value.trim()
+  if (!text) return false
+  for (const [key, id] of Object.entries(boxFields)) box[key] = byId(id).value
+  box.text = text
+  box.size = clamp(Number(box.size) || 24, 8, 400)
+  box.rotation = clamp(Number(box.rotation) || 0, -180, 180)
+  const lineHeight = clamp(Number(byId("box-line-height").value) || 1.15, .8, 2.2)
+  if (lineHeight === 1.15) delete box.lineHeight
+  else box.lineHeight = lineHeight
+  const strokeWidth = clamp(Number(byId("box-stroke-width").value) || 0, 0, 24)
+  if (strokeWidth > 0) {
+    box.strokeWidth = strokeWidth
+    box.strokeColor = byId("box-stroke-color").value
+  } else {
+    delete box.strokeWidth
+    delete box.strokeColor
+  }
+  box.fill = byId("box-fill").checked
+  const fillShape = byId("box-fill-shape").value
+  if (fillShape === "rect") delete box.fillShape
+  else box.fillShape = fillShape
+  const fillColor = byId("box-fill-color").value
+  if (fillColor.toLowerCase() === "#ffffff") delete box.fillColor
+  else box.fillColor = fillColor
+  for (const [prop, id] of [["bold", "box-bold"], ["italic", "box-italic"], ["uppercase", "box-uppercase"], ["vertical", "box-vertical"]]) {
+    if (byId(id).checked) box[prop] = true
+    else delete box[prop]
+  }
+  box.cleanup = byId("box-cleanup").checked
+  if (box.cleanup) freezeCleanup(box)
+  return true
+}
+
+function liveUpdateBox() {
+  const box = selectedBox()
+  if (!box || projectBusy()) return
+  if (formEditBoxId !== box.id) {
+    formEditBoxId = box.id
+    formEditSnapshot = editorSnapshot()
+  }
+  if (!applyFormToBox(box)) return
+  revision++
+  renderCanvas()
+  const activeButton = byId("boxes").querySelector('[aria-current="true"]')
+  if (activeButton) activeButton.textContent = box.text
+}
+
+function commitLiveFormCheckpoint() {
+  if (!formEditSnapshot) return
+  checkpoint(formEditSnapshot)
+  formEditSnapshot = null
+  formEditBoxId = null
+}
+
+form.addEventListener("input", liveUpdateBox)
+form.addEventListener("change", () => {
+  liveUpdateBox()
+  commitLiveFormCheckpoint()
+})
 form.onsubmit = (event) => {
   event.preventDefault()
   const box = selectedBox()
-  if (!box) return
-  if (projectBusy()) return
-  const text = byId("box-text").value.trim()
-  if (!text) return status("Hãy nhập nội dung khung.", true)
-  checkpoint()
-  for (const [key, id] of Object.entries(boxFields)) box[key] = byId(id).value
-  box.text = text
-  box.size = Number(box.size)
-  box.rotation = Number(box.rotation)
-  box.fill = byId("box-fill").checked
-  box.cleanup = byId("box-cleanup").checked
-  if (box.cleanup) freezeCleanup(box)
+  if (!box || projectBusy()) return
+  const before = formEditSnapshot ?? editorSnapshot()
+  if (!applyFormToBox(box)) return status("Hãy nhập nội dung khung.", true)
+  checkpoint(before)
+  formEditSnapshot = null
+  formEditBoxId = null
   renderPages()
   renderCanvas()
   renderInspector()
   status("Đã lưu khung.")
 }
 
-byId("delete-box").onclick = () => {
+function deleteSelectedBox() {
   const page = selectedPage()
   if (!page || !state.boxId || projectBusy()) return
   checkpoint()
   page.boxes = page.boxes.filter((box) => box.id !== state.boxId)
   state.boxId = null
+  formEditSnapshot = null
+  formEditBoxId = null
   renderCanvas()
   renderInspector()
   status("Đã xóa khung.")
+}
+
+function duplicateSelectedBox() {
+  const page = selectedPage()
+  const box = selectedBox()
+  if (!page || !box || projectBusy()) return
+  checkpoint()
+  const copy = duplicateBox(box)
+  page.boxes.push(copy)
+  state.boxId = copy.id
+  renderCanvas()
+  renderInspector()
+  status("Đã nhân bản khung.")
+}
+
+function moveSelectedBoxLayer(delta) {
+  const page = selectedPage()
+  if (!page || !state.boxId || projectBusy()) return
+  const { boxes, moved } = reorderBox(page.boxes, state.boxId, delta)
+  if (!moved) return
+  checkpoint()
+  page.boxes = boxes
+  renderCanvas()
+  renderInspector()
+}
+
+byId("delete-box").onclick = deleteSelectedBox
+byId("duplicate-box").onclick = duplicateSelectedBox
+byId("box-layer-up").onclick = () => moveSelectedBoxLayer(1)
+byId("box-layer-down").onclick = () => moveSelectedBoxLayer(-1)
+byId("autofit-box").onclick = () => {
+  const page = selectedPage()
+  const box = selectedBox()
+  if (!page || !box || projectBusy()) return
+  const fitted = autoFitBox(page, box)
+  if (fitted === box.size) return status("Cỡ chữ hiện tại đã vừa khung.")
+  checkpoint()
+  box.size = fitted
+  renderCanvas()
+  renderInspector()
+  status(`Đã tự khớp cỡ chữ thành ${fitted} px.`)
+}
+byId("autofit-page").onclick = () => {
+  const page = selectedPage()
+  if (!page?.boxes.length || projectBusy()) return
+  checkpoint()
+  let adjusted = 0
+  for (const box of page.boxes) {
+    const fitted = autoFitBox(page, box)
+    if (fitted !== box.size) {
+      box.size = fitted
+      adjusted++
+    }
+  }
+  renderCanvas()
+  renderInspector()
+  status(`Đã khớp cỡ chữ cho ${adjusted}/${page.boxes.length} khung.`)
 }
 
 function applyTranslation(page, lines) {
@@ -1061,13 +1520,13 @@ async function localProcessing(preview) {
       status("Đã tạo ảnh tiền xử lý.")
     } else {
       checkpoint()
+      let added = 0
       for (const line of result.lines) {
-        line.box = [
-          Math.round((sample.left + line.box[0] / 1000 * sample.width) / page.image.naturalWidth * 1000),
-          Math.round((sample.top + line.box[1] / 1000 * sample.height) / page.image.naturalHeight * 1000),
-          Math.round((sample.left + line.box[2] / 1000 * sample.width) / page.image.naturalWidth * 1000),
-          Math.round((sample.top + line.box[3] / 1000 * sample.height) / page.image.naturalHeight * 1000),
-        ]
+        const left = clamp(Math.round((sample.left + line.box[0] / 1000 * sample.width) / page.image.naturalWidth * 1000), 0, 999)
+        const top = clamp(Math.round((sample.top + line.box[1] / 1000 * sample.height) / page.image.naturalHeight * 1000), 0, 999)
+        const right = clamp(Math.round((sample.left + line.box[2] / 1000 * sample.width) / page.image.naturalWidth * 1000), left + 1, 1000)
+        const bottom = clamp(Math.round((sample.top + line.box[3] / 1000 * sample.height) / page.image.naturalHeight * 1000), top + 1, 1000)
+        line.box = [left, top, right, bottom]
         const overlapping = page.boxes.find((box) => overlapScore(toCoordinates(box), line.box) > .5)
         if (overlapping) {
           if (overlapping.text !== line.text && !page.unplaced.some((item) => item.text === line.text)) page.unplaced.push(line)
@@ -1075,9 +1534,10 @@ async function localProcessing(preview) {
           const box = makeBox(page, toRectangle(line.box), line.text)
           box.fill = false
           page.boxes.push(box)
+          added++
         }
       }
-      status(`Đã nhận dạng ${result.lines.length} dòng. Dòng chồng khung có sẵn được đưa vào Chưa đặt.`)
+      status(`Đã nhận dạng ${result.lines.length} dòng (${added} khung mới). Dòng chồng khung có sẵn được đưa vào Chưa đặt.`)
     }
   } catch (error) { status(error.message, true) }
   finally { state.processingNative = false; render() }
@@ -1190,4 +1650,109 @@ zipDialog.addEventListener("close", () => {
   }))
 })
 
+const findDialog = byId("find-replace-dialog")
+function findOptions() {
+  return {
+    caseSensitive: byId("find-case").checked,
+    wholeWord: byId("find-word").checked,
+    includeUnplaced: byId("find-unplaced").checked,
+  }
+}
+function renderFindResults() {
+  const query = byId("find-query").value
+  const matches = findMatches(state.pages, query, findOptions())
+  const totalHits = matches.reduce((sum, item) => sum + item.count, 0)
+  byId("find-summary").textContent = query
+    ? `Tìm thấy ${totalHits} vị trí trong ${matches.length} mục.`
+    : "Nhập từ khóa để tìm trong toàn bộ chương."
+  byId("replace-all-btn").disabled = !matches.length || projectBusy()
+  byId("find-results").replaceChildren(...matches.map((match) => {
+    const li = document.createElement("li")
+    const label = `Trang ${match.pageIndex + 1}${match.isUnplaced ? " (Chưa đặt)" : ""}: ${match.text.slice(0, 80)}`
+    li.append(listButton(label, () => {
+      findDialog.close()
+      location.hash = "editor"
+      const page = state.pages[match.pageIndex]
+      if (page) selectPage(page)
+      if (!match.isUnplaced) {
+        const box = page?.boxes.find((item) => item.id === match.boxId)
+        if (box) selectBox(box)
+      } else {
+        byId("queue-section").scrollIntoView({ block: "nearest" })
+      }
+    }))
+    return li
+  }))
+}
+function openFindDialog() {
+  if (!findDialog.open) findDialog.showModal()
+  renderFindResults()
+  byId("find-query").focus()
+}
+byId("open-find").onclick = openFindDialog
+byId("close-find").onclick = () => findDialog.close()
+for (const id of ["find-query", "find-case", "find-word", "find-unplaced"]) {
+  byId(id).addEventListener("input", renderFindResults)
+  byId(id).addEventListener("change", renderFindResults)
+}
+byId("replace-all-btn").onclick = () => {
+  const query = byId("find-query").value
+  if (!query || projectBusy()) return
+  const before = editorSnapshot()
+  const { replacedItems, replacedOccurrences } = replaceMatches(
+    state.pages, query, byId("replace-text").value, findOptions(),
+  )
+  if (!replacedOccurrences) return
+  checkpoint(before)
+  render()
+  renderFindResults()
+  status(`Đã thay thế ${replacedOccurrences} vị trí trong ${replacedItems} mục.`)
+}
+
+const shortcutsDialog = byId("shortcuts-dialog")
+byId("open-shortcuts").onclick = () => shortcutsDialog.showModal()
+byId("close-shortcuts").onclick = () => shortcutsDialog.close()
+
+async function refreshWebRecovery() {
+  if (desktop?.native) return
+  const info = await getWebSnapshotInfo()
+  byId("web-recovery").hidden = !info
+  if (info) {
+    const time = new Date(info.savedAt).toLocaleTimeString("vi-VN")
+    byId("web-autosave-status").textContent = `Bản tự lưu web (${info.pageCount} trang · ${time})`
+  }
+}
+async function webAutosave() {
+  if (desktop?.native || autosaving || projectBusy() || gesture || !state.pages.length || savedRevision === revision) return
+  autosaving = true
+  const snapshotRevision = revision
+  try {
+    const ok = await saveWebSnapshot(projectBlob(), {
+      name: (projectName ?? filenameStem(state.pages[0]?.name ?? "khung-thoai")) + projectExtension,
+      pageCount: state.pages.length,
+    })
+    if (ok) {
+      savedRevision = snapshotRevision
+      await refreshWebRecovery()
+    }
+  } finally {
+    autosaving = false
+  }
+}
+if (!desktop?.native) {
+  refreshWebRecovery()
+  setInterval(webAutosave, 25000)
+}
+byId("recover-web").onclick = async () => {
+  const file = await loadWebSnapshot()
+  if (!file) return status("Không tìm thấy bản tự lưu web.", true)
+  await loadProject(file)
+}
+byId("clear-web-recovery").onclick = async () => {
+  await clearWebSnapshot()
+  await refreshWebRecovery()
+  status("Đã xóa bản tự lưu trình duyệt.")
+}
+
+updateFitLabel()
 render()

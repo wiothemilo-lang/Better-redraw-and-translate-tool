@@ -82,16 +82,38 @@ internal static class LocalOcr
                 var top = words.Min(word => int.Parse(word[7]));
                 var right = words.Max(word => int.Parse(word[6]) + int.Parse(word[8]));
                 var bottom = words.Max(word => int.Parse(word[7]) + int.Parse(word[9]));
+                var normLeft = Math.Clamp(Normalize(left, scaledWidth), 0, 999);
+                var normTop = Math.Clamp(Normalize(top, scaledHeight), 0, 999);
+                var normRight = Math.Clamp(Normalize(right, scaledWidth), normLeft + 1, 1000);
+                var normBottom = Math.Clamp(Normalize(bottom, scaledHeight), normTop + 1, 1000);
                 lines.Add((JsonNode)new JsonObject {
                     ["id"] = "L" + (lines.Count + 1),
-                    ["text"] = string.Join(" ", words.Select(word => word[11])),
-                    ["box"] = new JsonArray(Normalize(left, scaledWidth), Normalize(top, scaledHeight), Normalize(right, scaledWidth), Normalize(bottom, scaledHeight)),
+                    ["text"] = JoinWords(words.Select(word => word[11])),
+                    ["box"] = new JsonArray(normLeft, normTop, normRight, normBottom),
                 });
             }
             return new JsonObject { ["lines"] = lines, ["width"] = width, ["height"] = height };
         }
         finally { File.Delete(path); }
     }
+
+    private static string JoinWords(IEnumerable<string> words)
+    {
+        var builder = new StringBuilder();
+        char? previous = null;
+        foreach (var word in words)
+        {
+            if (string.IsNullOrEmpty(word)) continue;
+            if (previous is { } prev && !(IsCjk(prev) && IsCjk(word[0])))
+                builder.Append(' ');
+            builder.Append(word);
+            previous = word[^1];
+        }
+        return builder.ToString();
+    }
+
+    private static bool IsCjk(char ch) =>
+        ch is (>= '\u3000' and <= '\u9fff') or (>= '\uf900' and <= '\ufaff') or (>= '\uff00' and <= '\uffef');
 
     private static int Normalize(int value, int total) => Math.Clamp((int)Math.Round(value * 1000d / total), 0, 1000);
 }

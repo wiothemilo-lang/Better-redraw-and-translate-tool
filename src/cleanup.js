@@ -1,5 +1,46 @@
 export const cleanupRectangle = (box) => box.cleanupRect ?? box.originalBox ?? box
 
+export function applyAlphaExpand(alphaBytes, width, height, expand) {
+  if (!expand) return alphaBytes
+  const radius = Math.abs(expand)
+  const dilate = expand > 0
+  const temp = new Uint8Array(width * height)
+  const output = new Uint8Array(width * height)
+  // Separable 1D horizontal then vertical min/max matches square 2D erosion/dilation in O(W*H*R).
+  for (let y = 0; y < height; y++) {
+    const row = y * width
+    for (let x = 0; x < width; x++) {
+      if (!dilate && (x < radius || x + radius >= width)) {
+        temp[row + x] = 0
+        continue
+      }
+      let value = dilate ? 0 : 255
+      const start = Math.max(0, x - radius)
+      const end = Math.min(width - 1, x + radius)
+      for (let xx = start; xx <= end; xx++) {
+        const sample = alphaBytes[row + xx]
+        value = dilate ? (sample > value ? sample : value) : (sample < value ? sample : value)
+      }
+      temp[row + x] = value
+    }
+  }
+  for (let y = 0; y < height; y++) {
+    const row = y * width
+    if (!dilate && (y < radius || y + radius >= height)) continue
+    const start = Math.max(0, y - radius)
+    const end = Math.min(height - 1, y + radius)
+    for (let x = 0; x < width; x++) {
+      let value = dilate ? 0 : 255
+      for (let yy = start; yy <= end; yy++) {
+        const sample = temp[yy * width + x]
+        value = dilate ? (sample > value ? sample : value) : (sample < value ? sample : value)
+      }
+      output[row + x] = value
+    }
+  }
+  return output
+}
+
 // Stroke widths use the shorter image dimension, so masks survive zoom and export.
 export function paintCleanupMask(canvas, box, image, left, top) {
   const context = canvas.getContext("2d")
@@ -23,21 +64,10 @@ export function paintCleanupMask(canvas, box, image, left, top) {
   const expand = box.cleanupExpand ?? 0
   if (!expand) return
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height)
-  const source = pixels.data.slice()
-  const radius = Math.abs(expand)
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      let alpha = expand > 0 ? 0 : 255
-      if (expand < 0 && (x < radius || y < radius || x + radius >= canvas.width || y + radius >= canvas.height)) alpha = 0
-      for (let yy = Math.max(0, y - radius); yy <= Math.min(canvas.height - 1, y + radius); yy++) {
-        for (let xx = Math.max(0, x - radius); xx <= Math.min(canvas.width - 1, x + radius); xx++) {
-          const value = source[(yy * canvas.width + xx) * 4 + 3]
-          alpha = expand > 0 ? Math.max(alpha, value) : Math.min(alpha, value)
-        }
-      }
-      pixels.data[(y * canvas.width + x) * 4 + 3] = alpha
-    }
-  }
+  const alpha = new Uint8Array(canvas.width * canvas.height)
+  for (let index = 0; index < alpha.length; index++) alpha[index] = pixels.data[index * 4 + 3]
+  const expanded = applyAlphaExpand(alpha, canvas.width, canvas.height, expand)
+  for (let index = 0; index < expanded.length; index++) pixels.data[index * 4 + 3] = expanded[index]
   context.putImageData(pixels, 0, 0)
 }
 

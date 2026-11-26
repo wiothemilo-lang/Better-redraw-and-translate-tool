@@ -1,4 +1,5 @@
 import { imageMimeType, imageTypes } from "./io.js"
+import { validateRetouchStroke } from "./retouch.js"
 
 export const projectExtension = ".khungthoai"
 export const projectPageLimit = 50
@@ -23,11 +24,33 @@ function rectangle(rect) {
 }
 
 export function projectStyle(style) {
-  const { size, font, color, align, rotation, fill } = style ?? {}
-  if (!inRange(size, 8, 400) || !["Arial", "Georgia", "Verdana", "Times New Roman"].includes(font) ||
+  const {
+    size, font, color, align, rotation, fill,
+    bold = false, italic = false, uppercase = false, vertical = false,
+    lineHeight = 1.15, strokeWidth = 0, strokeColor = "#ffffff",
+    fillColor = "#ffffff", fillShape = "rect",
+  } = style ?? {}
+  if (!inRange(size, 8, 400) || !isText(font) || !font.trim() || font.length > 80 || /[\u0000-\u001f"\\]/.test(font) ||
       !isText(color) || !/^#[\da-f]{6}$/i.test(color) || !["left", "center", "right"].includes(align) ||
-      !inRange(rotation, -180, 180) || typeof fill !== "boolean") throw invalidProject()
-  return { size, font, color, align, rotation, fill }
+      !inRange(rotation, -180, 180) || typeof fill !== "boolean" ||
+      typeof bold !== "boolean" || typeof italic !== "boolean" || typeof uppercase !== "boolean" || typeof vertical !== "boolean" ||
+      !inRange(lineHeight, .8, 2.2) || !inRange(strokeWidth, 0, 24) ||
+      !isText(strokeColor) || !/^#[\da-f]{6}$/i.test(strokeColor) ||
+      !isText(fillColor) || !/^#[\da-f]{6}$/i.test(fillColor) ||
+      !["rect", "ellipse", "rounded"].includes(fillShape)) {
+    throw invalidProject()
+  }
+  return {
+    size, font, color, align, rotation, fill,
+    ...(bold && { bold }),
+    ...(italic && { italic }),
+    ...(uppercase && { uppercase }),
+    ...(vertical && { vertical }),
+    ...(lineHeight !== 1.15 && { lineHeight }),
+    ...(strokeWidth > 0 && { strokeWidth, strokeColor }),
+    ...(fillColor.toLowerCase() !== "#ffffff" && { fillColor }),
+    ...(fillShape !== "rect" && { fillShape }),
+  }
 }
 
 function projectStroke(stroke) {
@@ -79,12 +102,27 @@ function projectContext(context) {
 }
 
 function projectPage(page) {
-  const { name, type, size, boxes, unplaced, translationContext, translationJob } = page ?? {}
+  const { name, type, size, boxes, unplaced, retouchStrokes, translationContext, translationJob } = page ?? {}
   if (!isText(name) || !name || !imageTypes.has(type) || !Number.isSafeInteger(size) || size <= 0 ||
-      !Array.isArray(boxes) || !Array.isArray(unplaced)) {
+      !Array.isArray(boxes) || !Array.isArray(unplaced) ||
+      (retouchStrokes !== undefined && !Array.isArray(retouchStrokes))) {
     throw invalidProject()
   }
-  return { name, type, size, boxes: boxes.map(projectBox), unplaced: unplaced.map(projectLine), translationContext: projectContext(translationContext), translationJob: projectJob(translationJob) }
+  const cleanedRetouch = retouchStrokes?.length
+    ? retouchStrokes.map((stroke) => {
+      const valid = validateRetouchStroke(stroke)
+      if (!valid) throw invalidProject()
+      return valid
+    })
+    : undefined
+  return {
+    name, type, size,
+    boxes: boxes.map(projectBox),
+    unplaced: unplaced.map(projectLine),
+    ...(cleanedRetouch && { retouchStrokes: cleanedRetouch }),
+    translationContext: projectContext(translationContext),
+    translationJob: projectJob(translationJob),
+  }
 }
 
 function projectData({ pages, queue, settings, currentPage, fit, presets = [] }) {
@@ -102,8 +140,10 @@ function projectData({ pages, queue, settings, currentPage, fit, presets = [] })
 }
 
 export function writeProject(project) {
-  const pages = project.pages.map(({ file, name, boxes, unplaced, translationContext, translationJob }) => ({
-    name, type: imageMimeType(name, file.type), size: file.size, boxes, unplaced, translationContext, translationJob,
+  const pages = project.pages.map(({ file, name, boxes, unplaced, retouchStrokes, translationContext, translationJob }) => ({
+    name, type: imageMimeType(name, file.type), size: file.size, boxes, unplaced,
+    ...(retouchStrokes?.length && { retouchStrokes }),
+    translationContext, translationJob,
   }))
   const manifest = encoder.encode(JSON.stringify({ version: 2, ...projectData({ ...project, pages }) }))
   if (manifest.length > manifestLimit) throw new Error("Dữ liệu biên tập của dự án vượt quá 16 MB.")

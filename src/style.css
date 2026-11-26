@@ -54,7 +54,69 @@ h1, h2 { letter-spacing: -.035em; }
 }
 .button:hover:not(:disabled), .canvas-toolbar button:hover:not(:disabled) { background: #e7efe5; }
 .button.primary, .button.header-export { background: var(--accent); border-color: #c3db73; }
-.header-export { justify-self: end; white-space: nowrap; }
+.header-actions { justify-self: end; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.header-secondary { background: #214e41; border-color: #366959; color: #f2f8f3; }
+.header-secondary:hover:not(:disabled) { background: #2d6252; }
+.header-export { white-space: nowrap; }
+.script-export-row { display: flex; gap: 6px; margin-top: 8px; }
+.script-export-row select { width: 96px; flex: 0 0 auto; }
+.script-export-row button { flex: 1; }
+.zoom-group { display: inline-flex; align-items: center; gap: 4px; }
+.zoom-group span { font-size: .78rem; min-width: 58px; text-align: center; color: var(--quiet); }
+#paint-color { width: 42px; height: 32px; padding: 2px; }
+#paint-opacity { width: 62px; }
+.stage.panning { cursor: grab; }
+.stage.panning.dragging-pan { cursor: grabbing; }
+.stage.eyedropper { cursor: crosshair; }
+.outline { overflow: visible; }
+.resize-handle {
+  position: absolute; width: 10px; height: 10px; border-radius: 2px;
+  background: white; border: 2px solid #123e32; pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+.resize-handle[data-handle="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.resize-handle[data-handle="n"] { left: 50%; top: 0; cursor: ns-resize; }
+.resize-handle[data-handle="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+.resize-handle[data-handle="e"] { left: 100%; top: 50%; cursor: ew-resize; }
+.resize-handle[data-handle="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+.resize-handle[data-handle="s"] { left: 50%; top: 100%; cursor: ns-resize; }
+.resize-handle[data-handle="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+.resize-handle[data-handle="w"] { left: 0; top: 50%; cursor: ew-resize; }
+.rotate-handle {
+  position: absolute; left: 50%; top: -22px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--forest); pointer-events: auto;
+  transform: translate(-50%, -50%); cursor: grab;
+}
+.rotate-handle::after {
+  content: ""; position: absolute; left: 50%; top: 100%; width: 2px; height: 12px;
+  background: var(--forest); transform: translateX(-50%); pointer-events: none;
+}
+.clone-marker {
+  position: absolute; width: 16px; height: 16px; border: 2px solid #0284c7; border-radius: 50%;
+  transform: translate(-50%, -50%); pointer-events: none;
+}
+.clone-marker::before, .clone-marker::after {
+  content: ""; position: absolute; background: #0284c7; left: 50%; top: 50%; transform: translate(-50%, -50%);
+}
+.clone-marker::before { width: 10px; height: 2px; }
+.clone-marker::after { width: 2px; height: 10px; }
+.box-batch-actions { margin-bottom: 8px; }
+.box-quick-actions { margin-top: 10px; }
+.box-quick-actions .button { flex: 1 1 44%; min-height: 30px; font-size: .78rem; padding: 4px 6px; }
+.font-row { display: flex; gap: 6px; align-items: end; }
+.font-row .field { flex: 1; margin-bottom: 0; }
+.font-upload { white-space: nowrap; height: 36px; margin-bottom: 0 !important; text-decoration: none !important; color: var(--ink) !important; }
+.style-toggles { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0; }
+.style-toggles .choice { margin: 0; }
+#web-recovery { margin-bottom: 10px; }
+#find-replace-dialog { width: min(520px, 94vw); }
+#find-results { max-height: 36dvh; overflow: auto; margin: 10px 0; }
+#find-results button { white-space: normal; }
+#shortcuts-dialog { width: min(460px, 94vw); }
+.shortcuts-list { margin: 12px 0; display: grid; gap: 6px; font-size: .82rem; }
+.shortcuts-list div { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 5px; border-bottom: 1px solid var(--line); }
+.shortcuts-list dt { font-weight: 700; color: var(--forest); }
+.shortcuts-list dd { margin: 0; text-align: right; color: var(--quiet); }
 .button.full { width: 100%; }
 .button.danger { color: #9c383e; }
 

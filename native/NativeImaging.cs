@@ -5,6 +5,21 @@ using System.Text.Json.Nodes;
 
 internal static class NativeImaging
 {
+    private static readonly uint[] CrcTable = BuildCrcTable();
+
+    private static uint[] BuildCrcTable()
+    {
+        var table = new uint[256];
+        for (uint i = 0; i < 256; i++)
+        {
+            var crc = i;
+            for (var bit = 0; bit < 8; bit++)
+                crc = (crc >> 1) ^ ((crc & 1) == 0 ? 0u : 0xedb88320u);
+            table[i] = crc;
+        }
+        return table;
+    }
+
     internal static (int Width, int Height) Dimensions(JsonObject options, int bytes, int maximum = 28_000_000)
     {
         var width = (int)options["width"]!;
@@ -57,18 +72,50 @@ internal static class NativeImaging
         var expand = Math.Clamp((int?)options["expand"] ?? 0, -8, 8);
         if (expand != 0)
         {
-            var source = (byte[])mask.Clone();
+            var temp = new byte[width * height];
             var radius = Math.Abs(expand);
+            var dilate = expand > 0;
             for (var y = 0; y < height; y++)
-            for (var x = 0; x < width; x++)
             {
-                var alpha = expand > 0 ? 0 : 255;
-                if (expand < 0 && (x < radius || y < radius || x + radius >= width || y + radius >= height))
-                    alpha = 0;
-                for (var yy = Math.Max(0, y - radius); yy <= Math.Min(height - 1, y + radius); yy++)
-                for (var xx = Math.Max(0, x - radius); xx <= Math.Min(width - 1, x + radius); xx++)
-                    alpha = expand > 0 ? Math.Max(alpha, source[yy * width + xx]) : Math.Min(alpha, source[yy * width + xx]);
-                mask[y * width + x] = (byte)alpha;
+                var row = y * width;
+                for (var x = 0; x < width; x++)
+                {
+                    if (!dilate && (x < radius || x + radius >= width))
+                    {
+                        temp[row + x] = 0;
+                        continue;
+                    }
+                    var alpha = dilate ? 0 : 255;
+                    var start = Math.Max(0, x - radius);
+                    var end = Math.Min(width - 1, x + radius);
+                    for (var xx = start; xx <= end; xx++)
+                    {
+                        var sample = mask[row + xx];
+                        alpha = dilate ? Math.Max(alpha, sample) : Math.Min(alpha, sample);
+                    }
+                    temp[row + x] = (byte)alpha;
+                }
+            }
+            for (var y = 0; y < height; y++)
+            {
+                var row = y * width;
+                if (!dilate && (y < radius || y + radius >= height))
+                {
+                    Array.Clear(mask, row, width);
+                    continue;
+                }
+                var start = Math.Max(0, y - radius);
+                var end = Math.Min(height - 1, y + radius);
+                for (var x = 0; x < width; x++)
+                {
+                    var alpha = dilate ? 0 : 255;
+                    for (var yy = start; yy <= end; yy++)
+                    {
+                        var sample = temp[yy * width + x];
+                        alpha = dilate ? Math.Max(alpha, sample) : Math.Min(alpha, sample);
+                    }
+                    mask[row + x] = (byte)alpha;
+                }
             }
         }
         for (var index = 0; index < mask.Length; index++)
@@ -93,7 +140,7 @@ internal static class NativeImaging
         var low = Percentile(.01);
         var high = Math.Max(low + 1, Percentile(.99));
         var denoise = (bool?)options["denoise"] ?? true;
-        var output = new byte[width * height * scale * scale * 4];
+        var cleaned = new byte[width * height];
         Span<byte> neighbors = stackalloc byte[5];
         for (var y = 0; y < height; y++)
         for (var x = 0; x < width; x++)
@@ -109,16 +156,45 @@ internal static class NativeImaging
                 neighbors.Sort();
                 value = neighbors[2];
             }
-            value = Math.Clamp((value - low) * 255 / (high - low), 0, 255);
-            for (var sy = 0; sy < scale; sy++)
-            for (var sx = 0; sx < scale; sx++)
+            cleaned[y * width + x] = (byte)Math.Clamp((value - low) * 255 / (high - low), 0, 255);
+        }
+        var outWidth = width * scale;
+        var outHeight = height * scale;
+        var output = new byte[outWidth * outHeight * 4];
+        if (scale == 1)
+        {
+            for (var i = 0; i < cleaned.Length; i++)
             {
-                var offset = (((y * scale + sy) * width * scale) + x * scale + sx) * 4;
-                output[offset] = output[offset + 1] = output[offset + 2] = (byte)value;
+                var value = cleaned[i];
+                var offset = i * 4;
+                output[offset] = output[offset + 1] = output[offset + 2] = value;
                 output[offset + 3] = 255;
             }
         }
-        return (new JsonObject { ["width"] = width * scale, ["height"] = height * scale }, output);
+        else
+        {
+            for (var oy = 0; oy < outHeight; oy++)
+            {
+                var sy = Math.Clamp((oy + .5) / scale - .5, 0, height - 1);
+                var y0 = (int)Math.Floor(sy);
+                var y1 = Math.Min(height - 1, y0 + 1);
+                var fy = sy - y0;
+                for (var ox = 0; ox < outWidth; ox++)
+                {
+                    var sx = Math.Clamp((ox + .5) / scale - .5, 0, width - 1);
+                    var x0 = (int)Math.Floor(sx);
+                    var x1 = Math.Min(width - 1, x0 + 1);
+                    var fx = sx - x0;
+                    var top = cleaned[y0 * width + x0] * (1 - fx) + cleaned[y0 * width + x1] * fx;
+                    var bottom = cleaned[y1 * width + x0] * (1 - fx) + cleaned[y1 * width + x1] * fx;
+                    var value = (byte)Math.Clamp(Math.Round(top * (1 - fy) + bottom * fy), 0, 255);
+                    var offset = (oy * outWidth + ox) * 4;
+                    output[offset] = output[offset + 1] = output[offset + 2] = value;
+                    output[offset + 3] = 255;
+                }
+            }
+        }
+        return (new JsonObject { ["width"] = outWidth, ["height"] = outHeight }, output);
 
         int Percentile(double fraction)
         {
@@ -136,8 +212,9 @@ internal static class NativeImaging
     {
         var width = (int)options["width"]!;
         var height = (int)options["height"]!;
-        var length = checked(width * height * 4);
-        Dimensions(options, length);
+        if (width <= 0 || height <= 0 || (long)width * height > 28_000_000)
+            throw new InvalidDataException("Invalid RGBA image dimensions.");
+        var length = width * height * 4;
         if (data.Length < (long)length * 2) throw new InvalidDataException("Missing image layers.");
         var output = data.AsSpan(0, length).ToArray();
         var offset = length * 2;
@@ -160,7 +237,17 @@ internal static class NativeImaging
 
     private static void Blend(byte[] target, int at, byte[] source, int from)
     {
-        var alpha = source[from + 3] / 255d;
+        var srcAlphaByte = source[from + 3];
+        if (srcAlphaByte == 0) return;
+        if (srcAlphaByte == 255)
+        {
+            target[at] = source[from];
+            target[at + 1] = source[from + 1];
+            target[at + 2] = source[from + 2];
+            target[at + 3] = 255;
+            return;
+        }
+        var alpha = srcAlphaByte / 255d;
         var oldAlpha = target[at + 3] / 255d;
         var resultAlpha = alpha + oldAlpha * (1 - alpha);
         for (var channel = 0; channel < 3; channel++)
@@ -200,12 +287,8 @@ internal static class NativeImaging
             output.Write(tag);
             output.Write(bytes);
             var crc = 0xffffffffu;
-            foreach (var part in new[] { tag, bytes })
-            foreach (var value in part)
-            {
-                crc ^= value;
-                for (var bit = 0; bit < 8; bit++) crc = (crc >> 1) ^ ((crc & 1) == 0 ? 0u : 0xedb88320u);
-            }
+            foreach (var value in tag) crc = CrcTable[(crc ^ value) & 0xff] ^ (crc >> 8);
+            foreach (var value in bytes) crc = CrcTable[(crc ^ value) & 0xff] ^ (crc >> 8);
             BinaryPrimitives.WriteUInt32BigEndian(size, ~crc);
             output.Write(size);
         }

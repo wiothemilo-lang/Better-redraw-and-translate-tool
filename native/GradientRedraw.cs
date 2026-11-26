@@ -12,20 +12,29 @@ internal static partial class RedrawEngine
     {
         private int count;
         private double sumX, sumY, sumXX, sumYY, sumXY;
-        private Vector3 sumColor, sumXColor, sumYColor;
+        private double sumR, sumG, sumB;
+        private double sumXR, sumXG, sumXB;
+        private double sumYR, sumYG, sumYB;
 
         internal void Add(Sample sample)
         {
-            var color = new Vector3(sample.Red, sample.Green, sample.Blue);
             count++;
-            sumX += sample.X;
-            sumY += sample.Y;
-            sumXX += (double)sample.X * sample.X;
-            sumYY += (double)sample.Y * sample.Y;
-            sumXY += (double)sample.X * sample.Y;
-            sumColor += color;
-            sumXColor += sample.X * color;
-            sumYColor += sample.Y * color;
+            double sx = sample.X, sy = sample.Y;
+            double r = sample.Red, g = sample.Green, b = sample.Blue;
+            sumX += sx;
+            sumY += sy;
+            sumXX += sx * sx;
+            sumYY += sy * sy;
+            sumXY += sx * sy;
+            sumR += r;
+            sumG += g;
+            sumB += b;
+            sumXR += sx * r;
+            sumXG += sx * g;
+            sumXB += sx * b;
+            sumYR += sy * r;
+            sumYG += sy * g;
+            sumYB += sy * b;
         }
 
         internal readonly PaperPlane? Solve()
@@ -40,11 +49,22 @@ internal static partial class RedrawEngine
             var determinant = xx * yy - xy * xy;
             if (determinant < 1)
                 return null;
-            var xc = sumXColor - (float)x * sumColor;
-            var yc = sumYColor - (float)y * sumColor;
-            var slopeX = (xc * (float)yy - yc * (float)xy) / (float)determinant;
-            var slopeY = (yc * (float)xx - xc * (float)xy) / (float)determinant;
-            return new PaperPlane(sumColor / count, slopeX, slopeY, x, y);
+            var xcR = sumXR - x * sumR;
+            var xcG = sumXG - x * sumG;
+            var xcB = sumXB - x * sumB;
+            var ycR = sumYR - y * sumR;
+            var ycG = sumYG - y * sumG;
+            var ycB = sumYB - y * sumB;
+            var slopeX = new Vector3(
+                (float)((xcR * yy - ycR * xy) / determinant),
+                (float)((xcG * yy - ycG * xy) / determinant),
+                (float)((xcB * yy - ycB * xy) / determinant));
+            var slopeY = new Vector3(
+                (float)((ycR * xx - xcR * xy) / determinant),
+                (float)((ycG * xx - xcG * xy) / determinant),
+                (float)((ycB * xx - xcB * xy) / determinant));
+            var mean = new Vector3((float)(sumR / count), (float)(sumG / count), (float)(sumB / count));
+            return new PaperPlane(mean, slopeX, slopeY, x, y);
         }
     }
 

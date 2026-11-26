@@ -118,3 +118,26 @@ test("invalid masks and preset styles cannot be saved", () => {
   project.presets = [{ name: "Broken", style: { ...project.pages[0].boxes[0], size: -2 } }]
   assert.throws(() => writeProject(project), /không hợp lệ/)
 })
+
+test("version 2 persists rich typography styles, custom font names and retouch strokes", async () => {
+  const project = sampleProject()
+  Object.assign(project.pages[0].boxes[0], {
+    font: "Comic Neue",
+    bold: true,
+    italic: true,
+    uppercase: true,
+    vertical: true,
+    lineHeight: 1.4,
+    strokeWidth: 3,
+    strokeColor: "#00ffaa",
+    fillColor: "#111111",
+    fillShape: "ellipse",
+  })
+  project.pages[0].retouchStrokes = [
+    { mode: "paint", size: .04, color: "#eeeeee", opacity: .8, points: [{ x: .1, y: .1 }, { x: .2, y: .2 }] },
+    { mode: "clone", size: .06, offsetX: -.05, offsetY: .05, points: [{ x: .4, y: .4 }] },
+  ]
+  const opened = await readProject(writeProject(project))
+  assert.deepEqual(opened.pages[0].boxes[0], project.pages[0].boxes[0])
+  assert.deepEqual(opened.pages[0].retouchStrokes, project.pages[0].retouchStrokes)
+})
