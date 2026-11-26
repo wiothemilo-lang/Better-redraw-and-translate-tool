@@ -11,7 +11,9 @@ export function resizeBox(start, handle, delta, { minW = .03, minH = .03 } = {})
   if (handle.includes("n")) top = clamp(top + delta.y, 0, bottom - minH)
   if (handle.includes("s")) bottom = clamp(bottom + delta.y, top + minH, 1)
 
-  return { x: left, y: top, w: right - left, h: bottom - top }
+  const w = Math.min(right - left, 1 - left)
+  const h = Math.min(bottom - top, 1 - top)
+  return { x: left, y: top, w, h }
 }
 
 export function rotateBox(center, pointer, { snap = false } = {}) {
@@ -109,9 +111,10 @@ export function findMatches(pages, query, options = {}) {
 
 export function replaceMatches(pages, query, replacement, options = {}) {
   const pattern = searchPattern(query, options)
-  if (!pattern) return { replacedItems: 0, replacedOccurrences: 0 }
+  if (!pattern) return { replacedItems: 0, replacedOccurrences: 0, skippedEmpty: 0 }
   let replacedItems = 0
   let replacedOccurrences = 0
+  let skippedEmpty = 0
   const apply = (text) => {
     let count = 0
     const next = text.replace(pattern, () => {
@@ -124,6 +127,10 @@ export function replaceMatches(pages, query, replacement, options = {}) {
     for (const box of page.boxes) {
       const { next, count } = apply(box.text)
       if (!count) continue
+      if (!next.trim()) {
+        skippedEmpty++
+        continue
+      }
       box.text = next
       replacedItems++
       replacedOccurrences += count
@@ -132,12 +139,16 @@ export function replaceMatches(pages, query, replacement, options = {}) {
     for (const line of page.unplaced ?? []) {
       const { next, count } = apply(line.text)
       if (!count) continue
+      if (!next.trim()) {
+        skippedEmpty++
+        continue
+      }
       line.text = next
       replacedItems++
       replacedOccurrences += count
     }
   }
-  return { replacedItems, replacedOccurrences }
+  return { replacedItems, replacedOccurrences, skippedEmpty }
 }
 
 function csvCell(value) {

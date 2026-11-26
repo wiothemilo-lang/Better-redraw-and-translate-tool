@@ -12,6 +12,13 @@ const executable = path.resolve("native/out", rid, "native-worker", "KhungThoai.
 const available = existsSync(executable)
 const image = (width = 32, height = 32) => ({ width, height, pixels: new Uint8Array(width * height * 4).fill(255) })
 
+test("NativeWorker.redraw returns null safely for null or malformed samples", async () => {
+  const worker = new native.NativeWorker(executable)
+  assert.equal(await worker.redraw(null), null)
+  assert.equal(await worker.redraw(undefined), null)
+  assert.equal(await worker.redraw({ pixels: new Uint8Array(4) }), null)
+})
+
 test("native protocol rejects invalid operations and data, then continues serving ordered requests", { skip: !available }, async (t) => {
   const worker = new native.NativeWorker(executable)
   t.after(() => worker.close())

@@ -240,6 +240,7 @@ function psdTextLayer(canvas, box) {
     name: box.text.split(/\r?\n/)[0].slice(0, 72),
     text: {
       text: g.lines.join("\n"),
+      ...(box.vertical && { orientation: "vertical" }),
       transform: [cos, sin, -sin, cos, g.cx + g.offsetX * cos - baseline * sin, g.cy + g.offsetX * sin + baseline * cos],
       style: {
         font: { name: psdFontName(box.font) },

@@ -28,7 +28,10 @@ test("resizeBox resizes all 8 handles while respecting bounds and minimum dimens
   assert.ok(Math.abs(shrunk.x - .57) < 1e-9)
   const clamped = resizeBox(start, "ne", { x: 2, y: -2 })
   assert.equal(clamped.y, 0)
-  assert.ok(Math.abs(clamped.x + clamped.w - 1) < 1e-9)
+  assert.ok(clamped.x + clamped.w <= 1)
+  const floatEdge = resizeBox({ x: 1 / 3, y: 1 / 7, w: .4, h: .4 }, "se", { x: 2, y: 2 })
+  assert.ok(floatEdge.x + floatEdge.w <= 1)
+  assert.ok(floatEdge.y + floatEdge.h <= 1)
 })
 
 test("rotateBox calculates angles and snaps to 15-degree increments when requested", () => {
@@ -77,11 +80,19 @@ test("findMatches and replaceMatches handle Unicode, regex characters, whole-wor
   const withUnplaced = findMatches(pages, "?!", { includeUnplaced: true })
   assert.equal(withUnplaced.length, 2)
 
-  const { replacedItems, replacedOccurrences } = replaceMatches(pages, "anh", "cậu", { wholeWord: true, includeUnplaced: true })
+  const { replacedItems, replacedOccurrences, skippedEmpty } = replaceMatches(pages, "anh", "cậu", { wholeWord: true, includeUnplaced: true })
   assert.equal(replacedItems, 2)
   assert.equal(replacedOccurrences, 3)
+  assert.equal(skippedEmpty, 0)
   assert.equal(pages[0].boxes[0].text, "cậu ấy nói: cậu khỏe không?!")
   assert.equal(pages[0].unplaced[0].text, "cậu trai ơi?!")
+
+  const emptyGuardPages = [{ id: "p2", name: "02.png", boxes: [{ id: "b2", text: "Chỉ có chữ này" }, { id: "b3", text: "Chỉ có chữ này thêm" }], unplaced: [] }]
+  const guarded = replaceMatches(emptyGuardPages, "Chỉ có chữ này", "   ")
+  assert.equal(guarded.skippedEmpty, 1)
+  assert.equal(guarded.replacedItems, 1)
+  assert.equal(emptyGuardPages[0].boxes[0].text, "Chỉ có chữ này")
+  assert.equal(emptyGuardPages[0].boxes[1].text, "    thêm")
 })
 
 test("exportDialogueScript outputs valid TXT, CSV and JSON formats", () => {

@@ -76,6 +76,10 @@ test("drawPage renders stroke, uppercase, ellipse shape and vertical text cleanl
   assert.ok(ops.some(([op, text]) => op === "fillText" && text === "縦"))
   assert.ok(ops.some(([op, text]) => op === "fillText" && text === "書"))
   assert.ok(ops.some(([op, text]) => op === "fillText" && text === "き"))
+
+  const beforeLen = ops.length
+  drawPage(canvas, page, { showCleanup: false, showText: false })
+  assert.equal(ops.length, beforeLen)
 })
 
 test("autoFitBox picks the largest non-overflowing font size for horizontal and vertical boxes", (t) => {

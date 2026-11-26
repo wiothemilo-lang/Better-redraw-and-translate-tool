@@ -41,7 +41,7 @@ export function projectStyle(style) {
     throw invalidProject()
   }
   return {
-    size, font, color, align, rotation, fill,
+    size, font: font.trim(), color, align, rotation, fill,
     ...(bold && { bold }),
     ...(italic && { italic }),
     ...(uppercase && { uppercase }),

@@ -1,98 +1,121 @@
-# Better-redraw-and-translate-tool
-use this tool for redrawing and translating comic, manga,...
+# Better-redraw-and-translate-tool (Khung Thoại)
 
-## Khung Thoại
+Công cụ biên tập, xóa chữ (redraw), dịch thuật và dàn thoại truyện tranh/manga chạy trên **trình duyệt Web** và **ứng dụng Desktop (Electron + lõi xử lý ảnh C#/.NET 10)**. Dự án được xây dựng độc lập sau khi khảo sát luồng công khai của Lilyzono. Xem thêm [ANALYSIS.md](ANALYSIS.md), [DESIGN.md](DESIGN.md) và [native/README.md](native/README.md).
 
-Trình biên tập trang truyện chạy trong trình duyệt, kết hợp nhập lời thoại, đặt khung trên ảnh và xuất tệp để tiếp tục chỉnh sửa. Dự án được viết độc lập sau khi khảo sát giao diện công khai của Lilyzono. Xem [ghi chép phân tích](ANALYSIS.md) và [tài liệu giao diện](DESIGN.md).
+---
 
-## Chạy tại máy
+## Tính năng chính
 
-Dùng Node.js 22.12+ hoặc 24 LTS.
+| Nhóm | Bản Web | Bản Desktop (Electron + C#) |
+|---|---|---|
+| Biên tập khung thoại, co giãn 8 tay cầm, xoay, zoom 25%–400%, kéo bàn vẽ, so sánh ảnh gốc | Có | Có |
+| Dàn chữ nâng cao (viền chữ, đậm/nghiêng/IN HOA/chữ dọc, giãn dòng, hình nền bầu dục/bo góc, tự khớp cỡ chữ, nạp font cục bộ) | Có | Có |
+| Cọ retouch thủ công (Hút màu, Cọ vẽ che chữ, Cọ sao chép nền Clone Stamp) & mặt nạ vùng xóa | Có | Có (mặt nạ C# tăng tốc) |
+| Xóa chữ tự động (Redraw) | Nền giấy sáng trơn trên Canvas | Nền trơn, nền chuyển sắc, screentone lặp (chu kỳ ≤ 32 px, kể cả screentone chuyển sáng) và bảo vệ nét vẽ cắt biên |
+| Dịch & ghép kịch bản bằng Gemini API (OCR → dịch theo mã + ngữ cảnh + thuật ngữ) | Có | Có |
+| OCR cục bộ offline (Tesseract, tiền xử lý ảnh phóng lớn bilinear + giảm nhiễu) | — | Có |
+| Tìm & thay thế toàn chương, xuất kịch bản (`TXT` / `CSV` / `JSON`), rà trước khi xuất | Có | Có |
+| Lưu / mở dự án `.khungthoai` & tự lưu phục hồi | Tự lưu IndexedDB trên trình duyệt | Ghi trực tiếp qua dialog OS, tự lưu mỗi 20 giây & khi đóng app, giữ bản `.bak` |
+| Xuất tệp | PNG, PSD lớp chữ chỉnh sửa được, PSD lớp ảnh, ZIP | Như Web + ghép & xuất PNG/ZIP trực tiếp bằng C# |
+
+---
+
+## Yêu cầu & Chạy tại máy
+
+Yêu cầu **Node.js 22.12+** (hoặc 24 LTS). Để bật lõi xử lý C# trên desktop cần thêm **.NET 10 SDK** (và **Tesseract** nếu dùng OCR cục bộ).
+
+### Chạy bản Web
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Mở địa chỉ mà Vite in ra. Dùng `npm run build` để tạo thư mục `dist/` và `npm run preview` để kiểm tra bản build.
+Mở địa chỉ mà Vite in ra. Dùng `npm run build` để tạo bản production trong `dist/` và `npm run preview` để kiểm tra.
 
-## App Electron
-
-Để mở bản desktop từ mã nguồn, cài Node.js 22.12+ và chạy `npm ci` rồi `npm run desktop`. Biên dịch lõi C# bằng .NET 10 SDK trước khi mở app để bật phục hồi nền chấm lặp và nền chuyển sắc.
+### Chạy & đóng gói App Electron
 
 ```sh
-npm run desktop:native
-npm run desktop
+npm run desktop:native   # Biên dịch lõi C# (.NET 10 SDK)
+npm run desktop          # Build web và mở app Electron
 ```
 
-Để đóng gói app kèm lõi C#, chọn nền tảng đích. Bản đóng gói chứa runtime .NET cần thiết.
+Đóng gói bản phát hành kèm runtime .NET tự chứa (kết quả nằm trong `desktop-dist/`):
 
 ```sh
 npm run desktop:package -- linux-x64
 npm run desktop:package -- win-x64
 ```
 
-Kết quả nằm trong `desktop-dist/`. Mở `Khung-Thoai` trên Linux hoặc `Khung-Thoai.exe` trên Windows. Các lệnh đóng gói cần kết nối mạng khi chưa có Electron và runtime .NET cho nền tảng đích trong bộ nhớ đệm.
+Mở `Khung-Thoai` (Linux) hoặc `Khung-Thoai.exe` (Windows). Các lệnh đóng gói cần kết nối mạng nếu Electron và runtime .NET cho nền tảng đích chưa có trong cache.
 
-## Xử lý C# trên desktop
+---
 
-Sau khi build worker, app bật **OCR trên máy**, tiền xử lý ảnh, mặt nạ cọ C#, xuất PNG/ZIP bằng C# và ghi dự án trực tiếp. **Lưu dự án** và **Mở dự án** dùng hộp chọn tệp của hệ điều hành. App tự lưu sau chỉnh sửa mỗi 20 giây và ghi thêm lần cuối khi đóng cửa sổ đang rảnh. **Khôi phục tự lưu** và **Bản tự lưu trước** mở các bản phục hồi sau khi khởi động lại. Tệp đã có được giữ thêm một bản `.bak` trước khi thay thế.
+## Hướng dẫn sử dụng công cụ
 
-OCR cục bộ cần Tesseract cùng gói ngôn ngữ. Giao diện chỉ liệt kê những ngôn ngữ đã cài. Chọn bố cục, phóng lớn và giảm nhiễu, xem ảnh tiền xử lý rồi bấm **Nhận dạng chữ**. Có thể giới hạn OCR trong khung đang chọn. Dòng chồng lên khung có sẵn được giữ trong **Chưa đặt** để bạn đối chiếu.
+### 1. Trang truyện, kịch bản và dàn thoại
+1. Thêm tối đa **50 ảnh** `PNG`, `JPEG` hoặc `WebP` (≤ 28 MP/ảnh). Kéo thả hoặc dùng nút `↑` / `↓` để sắp xếp thứ tự trang.
+2. Dán lời thoại hoặc nhập tệp `TXT` (UTF-8), `DOCX` hoặc `XLSX` tối đa 2 MB (hỗ trợ ngắt dòng/tab trong DOCX, bỏ qua chú âm `<rPh>` trong XLSX). Dùng tiêu đề như `Trang 1`, `[ Trang 1 ]` hoặc `[anh-01.png]` để chỉ định trang; với XLSX hàng đầu có thể dùng cột `Page` và `Translation`.
+3. Chọn hướng đọc (`Phải sang trái` / `Trái sang phải`) và bấm **Dàn thoại lên ảnh**. Câu không khớp trang hoặc vượt giới hạn tự động đưa vào mục **Chưa đặt**.
+4. Dùng **Xuất kịch bản** để xuất toàn bộ thoại của chương ra **TXT** (nhập lại được ngay), **CSV (UTF-8 BOM cho Excel)** hoặc **JSON**.
 
-Worker phục hồi screentone có chu kỳ đến 32 pixel và bảo vệ nét mực nối qua biên vùng xóa. **Nới / thu mặt nạ** chỉnh phần bảo vệ bằng cọ trong vùng đã khoanh. Bộ xuất C# ghép ảnh, redraw và lớp chữ theo thứ tự của bản xem trước, sau đó xuất PNG hoặc ZIP từng trang. Lớp chữ PSD chỉnh sửa được tiếp tục được tạo bằng ag-psd.
+### 2. Dàn chữ nâng cao, điều hướng và chỉnh khung trực tiếp
+- **Thao tác trực tiếp trên ảnh**:
+  - Bấm **+ Khung chữ** rồi bấm/kéo trên ảnh (hoặc nhấn `Enter` khi ảnh đang lấy tiêu điểm).
+  - Chọn khung để kéo di chuyển, kéo **8 tay cầm co giãn** ở cạnh/góc, hoặc kéo **tay cầm xoay** phía trên (giữ `Shift` để xoay theo nấc 15°).
+  - **Thu phóng 25%–400%** bằng nút `−`/`+`, `Ctrl + cuộn chuột` hoặc chuyển nhanh `Vừa trang` / `100%`.
+  - **Kéo bàn vẽ (Pan)** bằng công cụ `Kéo bàn vẽ (Hand)`, giữ `Space + kéo` hoặc kéo chuột giữa.
+  - Bấm **So sánh gốc** (phím `\`) để ẩn nhanh lớp redraw và chữ nhằm đối chiếu bản raw.
+- **Tùy biến kiểu chữ & xem trước trực tiếp**:
+  - Chỉnh **Nội dung**, **Font** (hỗ trợ **+ Nạp font** `.ttf`, `.otf`, `.woff`, `.woff2` từ máy), **Đậm / Nghiêng / IN HOA / Chữ dọc**, **Cỡ chữ**, **Giãn dòng (`0.8–2.2`)**, **Màu chữ**, **Canh chữ**, **Góc xoay**, **Viền chữ (stroke)** và **Hình nền** (`Chữ nhật`, `Bầu dục`, `Bo góc`) kèm **Màu nền**. Mọi thay đổi đều xem trước trực tiếp trên ảnh.
+  - Bấm **Khớp cỡ** hoặc **Khớp cỡ chữ cả trang** để tự chọn cỡ chữ lớn nhất không tràn khung.
+  - Dùng **Nhân bản** (`Ctrl/Cmd+D`), **↑ / ↓ Lớp** (đổi thứ tự Z-index) và **Mẫu dàn chữ** để lưu/áp dụng nhanh bộ kiểu cho khung, trang hoặc cả chương.
 
-Xem [hướng dẫn lõi native](native/README.md) để cài OCR, đóng gói engine, đọc giao thức và thêm tác vụ mới.
+### 3. Xóa chữ tự động & công cụ Retouch thủ công
+- **Xóa chữ tự động**: Bật **Xóa chữ gốc trong khung**. Dùng **Khoanh vùng xóa** để tách vùng xóa khỏi vị trí khung chữ; dùng **Cọ giữ nền gốc** và **Cọ thêm vùng xóa** để tô mặt nạ bảo vệ nét vẽ; chỉnh **Nới / thu mặt nạ (`-8..8 px`)** trên desktop; bấm **Đặt lại vùng xóa** để quay về mặc định.
+- **Vẽ che & sao chép nền thủ công**:
+  - **Hút màu (`eyedropper`)**: Bấm vào ảnh để lấy mã màu RGB chính xác cho cọ vẽ.
+  - **Cọ vẽ che chữ (`paint`)**: Tô màu và độ đục tùy chỉnh trực tiếp lên lớp redraw.
+  - **Cọ sao chép nền (`clone`)**: Giữ `Alt + bấm` vào vùng nền/screentone sạch để đặt điểm nguồn, sau đó kéo tô lên chữ cần che.
+  - Bấm **Xóa nét vẽ tay** để xóa toàn bộ nét paint/clone của trang hiện tại. Các nét vẽ tay được lưu trong `.khungthoai` và gộp tự động vào lớp `Nền đã xóa chữ` khi xuất PNG/PSD/ZIP.
+- Dùng checkbox **Hiện redraw** / **Hiện chữ** để kiểm tra từng lớp (không làm mất lớp khi xuất).
 
-## Biên tập và xuất tệp
+### 4. Tìm & thay thế, hoàn tác và phím tắt
+- Mở **Tìm & thay** (`Ctrl/Cmd+H`) để tìm kiếm/thay thế xuyên suốt chương (hỗ trợ phân biệt hoa/thường, khớp nguyên từ Unicode, gồm cả câu chưa đặt, tự bảo vệ không làm rỗng hoàn toàn nội dung khung).
+- Lịch sử **Hoàn tác / Làm lại** giữ tối đa 40 thao tác trong phiên.
 
-1. Thêm tối đa 50 ảnh PNG, JPEG hoặc WebP. Dùng các nút lên và xuống để sắp xếp trang.
-2. Dán kịch bản hoặc nhập TXT UTF-8, DOCX, XLSX tối đa 2 MB. Mỗi câu nằm trên một dòng. Dùng tiêu đề như `Trang 1` hoặc `[anh-01.png]` để chỉ trang. Với XLSX, hàng đầu có thể dùng cột `Page` và `Translation`.
-3. Bấm **Dàn thoại lên ảnh**. Ứng dụng xếp các câu thành lưới theo hướng đọc đã chọn. Câu có chỉ dẫn trang không khớp hoặc vượt số ô tự động xuất hiện trong **Chưa đặt**.
-4. Bấm **+ Khung chữ** rồi kéo hoặc bấm trên ảnh. Khi ảnh được lấy tiêu điểm, Enter đặt một khung ở giữa. Kéo khung đã có để di chuyển. Chọn khung để chỉnh nội dung, font, cỡ chữ, màu, canh, góc xoay và nền.
-5. Xuất PNG, PSD chứa lớp chữ chỉnh sửa được, PSD tách các khung thành lớp ảnh, hoặc ZIP chứa cả lượt. PSD có thể chứa riêng ảnh gốc, phần nền đã xóa chữ và nhóm thoại. Photoshop có thể hỏi cập nhật lớp chữ khi mở PSD. [Tài liệu ag-psd](https://github.com/Agamnentzar/ag-psd#updating-text-layers)
+| Phím tắt | Tác dụng |
+|---|---|
+| `Ctrl / Cmd + Z` | Hoàn tác |
+| `Ctrl / Cmd + Shift + Z` hoặc `Ctrl + Y` | Làm lại |
+| `Ctrl / Cmd + D` | Nhân bản khung đang chọn |
+| `Ctrl / Cmd + H` (hoặc `F` ngoài ô nhập) | Mở hộp thoại Tìm & thay thế |
+| `Ctrl + Cuộn chuột` | Thu phóng bàn vẽ (25%–400%) |
+| Giữ `Space` + Kéo / Chuột giữa | Kéo bàn vẽ (Pan) |
+| `\` | Bật / tắt so sánh ảnh gốc |
+| `Shift` + Kéo tay cầm xoay | Xoay khung theo nấc 15° |
+| `Alt` + Bấm (khi chọn Cọ sao chép nền) | Đặt điểm nguồn sao chép |
+| Phím mũi tên (khi chọn khung) | Dịch khung 1 px (giữ `Shift`: 10 px) |
+| `Delete` / `Backspace` | Xóa khung đang chọn |
+| `Enter` (khi focus bàn vẽ) | Đặt khung chữ ở giữa trang |
+| `?` | Mở bảng phím tắt |
 
-Bấm **Lưu dự án** để tải tệp `.khungthoai` chứa ảnh gốc, thứ tự trang, kịch bản, khung thoại, câu chưa đặt và thiết lập dịch. Dùng **Mở dự án** trên web hoặc Electron để tiếp tục từ trang đang làm. Tệp v2 lưu thêm mẫu chữ, vùng xóa, nét cọ, bảng thuật ngữ và tiến độ dịch. Ứng dụng tiếp tục đọc tệp v1. Khóa API Gemini chỉ giữ trong phiên. Các chỉnh sửa sau lần lưu gần nhất cần được lưu lại trước khi đóng app hoặc tải lại trang.
+### 5. Dịch ảnh bằng Gemini & OCR cục bộ
+- **Gemini API**: Mở **Dịch ảnh bằng Gemini**, nhập API key, chọn model/ngôn ngữ, thêm ghi chú xưng hô và **Bảng thuật ngữ** (`từ gốc = từ dịch`), sau đó bấm **Dịch trang đang mở**, **Dịch cả lượt**, **Tiếp tục dịch chương**, **Dừng dịch** hoặc **Ghép nghĩa kịch bản trang này**. Khóa API chỉ giữ trong bộ nhớ phiên hiện tại và không lưu vào tệp dự án. [Tài liệu Gemini](https://ai.google.dev/api/generate-content)
+- **OCR trên máy (Desktop)**: Sau khi build lõi C# và cài Tesseract cùng gói ngôn ngữ, dùng mục **OCR trên máy** để tiền xử lý (phóng lớn bilinear 1×–3×, giảm nhiễu), xem trước ảnh và nhận dạng chữ (toàn trang hoặc trong khung đang chọn). Xem chi tiết cấu hình trong [native/README.md](native/README.md).
 
-## Hoàn tác, dàn chữ nâng cao và mẫu kiểu
+### 6. Dự án `.khungthoai`, tự lưu và xuất tệp
+- **Lưu / Mở dự án**: Tệp `.khungthoai` v2 lưu ảnh gốc, thứ tự trang, kịch bản, khung thoại (kể cả kiểu chữ nâng cao, font tùy chỉnh, vùng xóa, nét cọ), nét retouch paint/clone, mẫu dàn chữ, bảng thuật ngữ và tiến độ dịch (vẫn đọc tương thích ngược tệp v1).
+- **Tự lưu phục hồi**:
+  - *Bản Web*: Tự lưu phiên hiện tại vào IndexedDB mỗi 25 giây khi có thay đổi; hiển thị nút **Khôi phục phiên web** khi mở lại tab.
+  - *Bản Desktop*: Tự lưu mỗi 20 giây và khi đóng cửa sổ, giữ bản `.bak` trước khi ghi đè, hỗ trợ **Khôi phục tự lưu** và **Bản tự lưu trước**.
+- **Rà trước khi xuất & Xuất tệp**: Kiểm tra câu chưa đặt, chữ tràn khung, trang lỗi/chưa dịch xong trước khi xuất **PNG**, **PSD chữ** (tách `Ảnh gốc`, `Nền đã xóa chữ`, nhóm `Thoại` chỉnh sửa được — xem [ag-psd](https://github.com/Agamnentzar/ag-psd#updating-text-layers)), **PSD ảnh**, hoặc **ZIP cả lượt**.
 
-Dùng **Hoàn tác** / **Làm lại** hoặc Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z (Ctrl+Y cũng được). Lịch sử giữ tối đa 40 thao tác trong phiên, gồm thêm/bỏ trang, sắp xếp, dàn thoại, sửa/kéo/co giãn/xoay/xóa khung, đặt câu chờ, áp dụng mẫu, vẽ cọ che/sao chép nền, thay thế hàng loạt và dịch. Trong ô nhập, phím tắt dùng lịch sử nhập văn bản của trình duyệt. Mở dự án khác sẽ bắt đầu lịch sử mới.
-
-Trên bàn vẽ, chọn khung để **kéo 8 tay cầm co giãn** hoặc **kéo tay cầm tròn phía trên để xoay** (giữ `Shift` để xoay theo nấc 15°). Dùng nút `−`/`+` hoặc `Ctrl + cuộn chuột` để thu phóng (25%–400%), giữ `Space` (hoặc công cụ **Kéo bàn vẽ**) để di chuyển vùng nhìn, và bấm **So sánh gốc** (phím `\`) để đối chiếu nhanh với ảnh gốc. Nhấn `Ctrl/Cmd+D` để nhân bản khung, `Ctrl/Cmd+H` để **Tìm & thay thế** toàn chương, `?` để xem bảng phím tắt, hoặc xuất kịch bản ra **TXT / CSV / JSON**.
-
-Bảng chỉnh khung hỗ trợ **xem trước trực tiếp**, **khớp cỡ chữ tự động** (từng khung hoặc cả trang), **nạp font cục bộ** (`.ttf`, `.otf`, `.woff`, `.woff2`), chữ **Đậm / Nghiêng / IN HOA / Chữ dọc**, **giãn dòng**, **viền chữ (stroke)**, và **hình nền** (`Chữ nhật`, `Bầu dục`, `Bo góc`) kèm màu nền tùy chỉnh. Trên trình duyệt web, ứng dụng còn tự lưu phiên vào IndexedDB để khôi phục nhanh nếu lỡ tải lại tab.
-
-Chọn và lưu một khung, nhập tên trong **Mẫu dàn chữ** rồi bấm **Lưu kiểu khung đang chọn**. Mẫu chứa đầy đủ thuộc tính kiểu chữ, viền và nền. Áp dụng mẫu cho khung đang chọn, mọi khung trên trang hoặc cả chương. Lưu cùng tên sẽ cập nhật mẫu đó. Mẫu được giữ trong tệp dự án.
-
-## Chỉnh vùng xóa chữ và vẽ che thủ công
-
-Chọn khung thoại rồi chọn **Khoanh vùng xóa** và kéo trên ảnh. Vùng này giữ nguyên khi di chuyển chữ. **Cọ giữ nền gốc** loại phần nét vẽ cần giữ khỏi vùng xóa, **Cọ thêm vùng xóa** đưa phần đã loại trở lại. Cỡ cọ tính theo pixel ảnh gốc và chỉ tác động trong vùng đã khoanh. **Đặt lại vùng xóa** bỏ các nét cọ và dùng vùng OCR nếu có, hoặc khung chữ hiện tại.
-
-Ngoài xóa chữ tự động, thanh công cụ còn có **Hút màu** (lấy mã màu pixel trực tiếp từ ảnh), **Cọ vẽ che chữ** (tô màu tùy chọn và độ đục lên lớp redraw) và **Cọ sao chép nền** (`Alt + bấm` vào vùng nền/screentone sạch để đặt điểm nguồn, rồi kéo tô che chữ). Các nét vẽ tay được lưu trong `.khungthoai` và gộp vào lớp `Nền đã xóa chữ` khi xuất PNG/PSD/ZIP.
-
-Bật/tắt **Hiện redraw** và **Hiện chữ** để so sánh với ảnh gốc. Các nút này chỉ điều khiển xem trước. PNG và PSD luôn xuất đầy đủ lớp đang biên tập, bao gồm mặt nạ cọ. Redraw tiếp tục phục hồi các pixel đủ tin cậy bằng thuật toán nền sáng trên web hoặc lõi C# trên desktop.
-
-## Rà trước khi xuất
-
-**Rà trước khi xuất** liệt kê câu chưa đặt, chữ tràn khung, trang dịch lỗi, lượt dịch chưa xong và thiết lập dịch đã đổi. Bấm vào một mục để đến trang hoặc khung tương ứng. Khi xuất PNG, PSD hoặc ZIP có các mục này, ứng dụng mở bảng kiểm tra và cho phép **Vẫn xuất** sau khi xem lại.
-
-## Dịch bằng Gemini
-
-Mở **Dịch ảnh bằng Gemini**, nhập khóa API, chọn ngôn ngữ rồi bấm **Dịch trang đang mở** hoặc **Dịch cả lượt**. Gemini đọc chữ và khung trước, sau đó dịch theo mã thoại. Khi dịch nhiều trang, câu dịch gần nhất được dùng làm ngữ cảnh cho trang sau. Nhập bảng thuật ngữ theo dạng `từ gốc = từ dịch`, mỗi mục một dòng, để Gemini dùng nhất quán trong chương. Ghi chú và bảng thuật ngữ được lưu theo dự án.
-
-Trạng thái từng trang hiện dưới tên ảnh. Nếu một trang lỗi, các trang đã dịch vẫn giữ kết quả. **Tiếp tục dịch chương** bắt đầu từ trang đầu chưa hoàn tất theo thiết lập hiện tại và xử lý các trang phía sau với ngữ cảnh nối tiếp. Nút **Dừng dịch** hủy yêu cầu đang chạy, giữ các trang đã xong. Có thể lưu dự án rồi mở lại để tiếp tục. Đổi model, ngôn ngữ, hướng đọc, ghi chú hoặc bảng thuật ngữ sẽ yêu cầu xử lý lại các trang theo thiết lập mới. Trình duyệt gửi ảnh và ghi chú trực tiếp đến Google Generative Language API. Ứng dụng giữ khóa trong trường nhập của phiên hiện tại. [Tài liệu Gemini](https://ai.google.dev/api/generate-content)
-
-Nếu đã có bản dịch, nhập kịch bản rồi bấm **Ghép nghĩa kịch bản trang này**. Dịch và ghép nghĩa đều ưu tiên khung có sẵn trên trang. Khi trang trống, chúng dùng khung OCR. Các câu không có tọa độ đáng tin cậy hoặc xung đột được giữ trong **Chưa đặt** để xử lý thủ công.
-
-Tùy chọn **Xóa chữ gốc trong khung** lấy mẫu màu giấy quanh khung. Lõi C# của app Electron xử lý nền trơn, nền chuyển sắc và screentone lặp, kể cả screentone đổi độ sáng theo nền. Với nền chuyển sắc, app giữ nguyên nét đậm nối từ trong ra ngoài khung. Vùng ảnh thiếu mẫu đủ tin cậy được giữ nguyên. Kiểm tra ảnh xem trước khi xuất.
-
-## Kiểm thử
-
-Chạy `npm test` để kiểm tra tọa độ OCR và quy tắc ghép khung. Sau khi chạy `npm run desktop:native`, bộ test còn kiểm tra phục hồi texture, dữ liệu sai và thứ tự phản hồi từ tiến trình C#. Xem [kết quả kiểm thử đối chứng](ANALYSIS.md#kiểm-thử-đối-chứng) để biết các hành vi đã được kiểm tra với Lilyzono.
+---
 
 ## Thư viện chương
 
-Nhập tệp JSON trỏ đến kho ảnh của bạn. Mỗi truyện có thể có nhiều chương và tên thay thế để tìm kiếm.
+Nhập tệp JSON trỏ đến kho ảnh HTTPS hoặc cùng nguồn (hỗ trợ tìm kiếm tiếng Việt không dấu theo tên và tên khác):
 
 ```json
 {
@@ -111,4 +134,23 @@ Nhập tệp JSON trỏ đến kho ảnh của bạn. Mỗi truyện có thể c
 }
 ```
 
-Chọn truyện và chương để đọc, chuyển ảnh vào trình biên tập hoặc tải ảnh thành ZIP. Máy chủ ảnh cần cho phép CORS đối với thao tác tải ZIP và chuyển vào trình biên tập khi chạy khác nguồn.
+Máy chủ ảnh cần bật CORS cho thao tác **Đưa vào biên tập** và **Tải ảnh ZIP** khi khác nguồn.
+
+---
+
+## Kiểm thử
+
+Chạy toàn bộ bộ test bằng Node.js 22.12+:
+
+```sh
+npm test
+```
+
+Bộ test bao gồm:
+- `test/placement.test.js`: Chuẩn hóa tọa độ OCR và quy tắc ghép khung.
+- `test/io.test.js`: Nhận diện MIME, đọc DOCX/XLSX và gom nhóm thoại.
+- `test/gemini.test.js`: Suy luận MIME ảnh, xử lý lỗi JSON và hủy yêu cầu Gemini.
+- `test/canvas.test.js` & `test/tools.test.js`: Dàn chữ (stroke, dọc, hình nền, auto-fit), co giãn 8 tay cầm, xoay, nhân bản, lớp Z-index, tìm & thay thế, xuất kịch bản.
+- `test/retouch.test.js` & `test/cleanup.test.js`: Hút màu, cọ paint/clone và thuật toán nới/thu mặt nạ tách trục 1D.
+- `test/project.test.js` & `test/workflow.test.js`: Lưu/mở `.khungthoai` v1/v2, lịch sử Undo/Redo và tiếp tục dịch chương.
+- `test/redraw.test.js`, `test/native-redraw.test.js`, `test/native-processing.test.js`: Hàng đợi redraw, phục hồi screentone/gradient, mặt nạ, PNG/ZIP và lưu tệp nguyên tử từ worker C# (tự động kích hoạt sau khi chạy `npm run desktop:native`).

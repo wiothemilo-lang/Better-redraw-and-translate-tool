@@ -80,6 +80,7 @@ function checkpoint(snapshot = editorSnapshot()) {
 
 function restoreHistory(direction) {
   if (projectBusy() || gesture) return
+  commitLiveFormCheckpoint()
   const snapshot = history[direction](editorSnapshot())
   if (!snapshot) return
   const { settings, ...editor } = snapshot
@@ -315,7 +316,7 @@ function rectStyle(element, rect) {
   for (const [name, value] of Object.entries({ left: rect.x, top: rect.y, width: rect.w, height: rect.h })) {
     element.style[name] = value * 100 + "%"
   }
-  if (rect.rotation) element.style.transform = "rotate(" + rect.rotation + "deg)"
+  element.style.transform = rect.rotation ? "rotate(" + rect.rotation + "deg)" : ""
 }
 
 function paintPreview(page) {
@@ -446,6 +447,7 @@ function renderPresets() {
 }
 
 byId("save-preset").onclick = () => {
+  commitLiveFormCheckpoint()
   const box = selectedBox()
   const name = byId("preset-name").value.trim()
   if (!box || projectBusy()) return
@@ -461,6 +463,7 @@ byId("save-preset").onclick = () => {
 }
 const optionalStyleKeys = ["bold", "italic", "uppercase", "vertical", "lineHeight", "strokeWidth", "strokeColor", "fillColor", "fillShape"]
 byId("apply-preset").onclick = () => {
+  commitLiveFormCheckpoint()
   const preset = state.presets[Number(byId("style-preset").value)]
   if (!preset || projectBusy()) return
   const scope = byId("preset-scope").value
@@ -639,6 +642,7 @@ function projectBlob() {
 
 byId("save-project").onclick = async () => {
   if (projectBusy()) return
+  commitLiveFormCheckpoint()
   try {
     const file = projectBlob()
     const name = projectName ?? filenameStem(state.pages[0]?.name ?? "khung-thoai")
@@ -923,7 +927,9 @@ byId("add-box").onclick = () => {
 }
 function point(event) {
   const area = pageCanvas.getBoundingClientRect()
-  return { x: clamp((event.clientX - area.left) / area.width, 0, 1), y: clamp((event.clientY - area.top) / area.height, 0, 1) }
+  const x = area.width > 0 ? clamp((event.clientX - area.left) / area.width, 0, 1) : 0
+  const y = area.height > 0 ? clamp((event.clientY - area.top) / area.height, 0, 1) : 0
+  return { x, y }
 }
 
 function placement(a, b) {
@@ -979,9 +985,10 @@ stage.addEventListener("pointerdown", (event) => {
     stage.setPointerCapture(event.pointerId)
     const size = clamp(Number(byId("brush-size").value) || 20, 1, 200)
     const opacity = clamp((Number(byId("paint-opacity").value) || 100) / 100, .05, 1)
+    const minDim = Math.max(1, Math.min(pageCanvas.width, pageCanvas.height))
     const stroke = tool === "paint"
-      ? { mode: "paint", size: size / Math.min(pageCanvas.width, pageCanvas.height), color: byId("paint-color").value, opacity, points: [origin] }
-      : { mode: "clone", size: size / Math.min(pageCanvas.width, pageCanvas.height), offsetX: cloneOrigin.x - origin.x, offsetY: cloneOrigin.y - origin.y, opacity, points: [origin] }
+      ? { mode: "paint", size: size / minDim, color: byId("paint-color").value, opacity, points: [origin] }
+      : { mode: "clone", size: size / minDim, offsetX: cloneOrigin.x - origin.x, offsetY: cloneOrigin.y - origin.y, opacity, points: [origin] }
     page.retouchStrokes ??= []
     page.retouchStrokes.push(stroke)
     gesture = { pointer: event.pointerId, retouchStroke: stroke, before }
@@ -990,7 +997,7 @@ stage.addEventListener("pointerdown", (event) => {
   }
 
   const rotateTarget = event.target.dataset?.rotate
-  if (tool === "text" && rotateTarget) {
+  if (tool === "text" && !state.placing && rotateTarget) {
     const box = page.boxes.find((item) => item.id === rotateTarget)
     if (!box) return
     event.preventDefault()
@@ -1000,7 +1007,7 @@ stage.addEventListener("pointerdown", (event) => {
   }
 
   const handle = event.target.dataset?.handle
-  if (tool === "text" && handle) {
+  if (tool === "text" && !state.placing && handle) {
     const box = page.boxes.find((item) => item.id === event.target.dataset.box)
     if (!box) return
     event.preventDefault()
@@ -1023,7 +1030,7 @@ stage.addEventListener("pointerdown", (event) => {
     box.cleanup = true
     if (tool !== "region") {
       const size = clamp(Number(byId("brush-size").value) || 20, 1, 200)
-      const stroke = { mode: tool, size: size / Math.min(pageCanvas.width, pageCanvas.height), points: [origin] }
+      const stroke = { mode: tool, size: size / Math.max(1, Math.min(pageCanvas.width, pageCanvas.height)), points: [origin] }
       box.cleanupStrokes ??= []
       box.cleanupStrokes.push(stroke)
       gesture = { pointer: event.pointerId, box, stroke, before }
@@ -1214,9 +1221,11 @@ form.onsubmit = (event) => {
   event.preventDefault()
   const box = selectedBox()
   if (!box || projectBusy()) return
+  const hadLiveEdit = Boolean(formEditSnapshot)
   const before = formEditSnapshot ?? editorSnapshot()
+  const beforeBox = JSON.stringify(box)
   if (!applyFormToBox(box)) return status("Hãy nhập nội dung khung.", true)
-  checkpoint(before)
+  if (hadLiveEdit || JSON.stringify(box) !== beforeBox) checkpoint(before)
   formEditSnapshot = null
   formEditBoxId = null
   renderPages()
@@ -1228,11 +1237,10 @@ form.onsubmit = (event) => {
 function deleteSelectedBox() {
   const page = selectedPage()
   if (!page || !state.boxId || projectBusy()) return
+  commitLiveFormCheckpoint()
   checkpoint()
   page.boxes = page.boxes.filter((box) => box.id !== state.boxId)
   state.boxId = null
-  formEditSnapshot = null
-  formEditBoxId = null
   renderCanvas()
   renderInspector()
   status("Đã xóa khung.")
@@ -1242,6 +1250,7 @@ function duplicateSelectedBox() {
   const page = selectedPage()
   const box = selectedBox()
   if (!page || !box || projectBusy()) return
+  commitLiveFormCheckpoint()
   checkpoint()
   const copy = duplicateBox(box)
   page.boxes.push(copy)
@@ -1254,6 +1263,7 @@ function duplicateSelectedBox() {
 function moveSelectedBoxLayer(delta) {
   const page = selectedPage()
   if (!page || !state.boxId || projectBusy()) return
+  commitLiveFormCheckpoint()
   const { boxes, moved } = reorderBox(page.boxes, state.boxId, delta)
   if (!moved) return
   checkpoint()
@@ -1270,6 +1280,7 @@ byId("autofit-box").onclick = () => {
   const page = selectedPage()
   const box = selectedBox()
   if (!page || !box || projectBusy()) return
+  commitLiveFormCheckpoint()
   const fitted = autoFitBox(page, box)
   if (fitted === box.size) return status("Cỡ chữ hiện tại đã vừa khung.")
   checkpoint()
@@ -1281,6 +1292,7 @@ byId("autofit-box").onclick = () => {
 byId("autofit-page").onclick = () => {
   const page = selectedPage()
   if (!page?.boxes.length || projectBusy()) return
+  commitLiveFormCheckpoint()
   checkpoint()
   let adjusted = 0
   for (const box of page.boxes) {
@@ -1698,15 +1710,22 @@ for (const id of ["find-query", "find-case", "find-word", "find-unplaced"]) {
 byId("replace-all-btn").onclick = () => {
   const query = byId("find-query").value
   if (!query || projectBusy()) return
+  commitLiveFormCheckpoint()
   const before = editorSnapshot()
-  const { replacedItems, replacedOccurrences } = replaceMatches(
+  const { replacedItems, replacedOccurrences, skippedEmpty } = replaceMatches(
     state.pages, query, byId("replace-text").value, findOptions(),
   )
-  if (!replacedOccurrences) return
+  if (!replacedOccurrences) {
+    if (skippedEmpty) status(`Bỏ qua ${skippedEmpty} khung vì thay thế sẽ làm trống nội dung.`, true)
+    return
+  }
   checkpoint(before)
   render()
   renderFindResults()
-  status(`Đã thay thế ${replacedOccurrences} vị trí trong ${replacedItems} mục.`)
+  status(
+    `Đã thay thế ${replacedOccurrences} vị trí trong ${replacedItems} mục.` +
+    (skippedEmpty ? ` Bỏ qua ${skippedEmpty} khung tránh để trống.` : ""),
+  )
 }
 
 const shortcutsDialog = byId("shortcuts-dialog")
@@ -1735,6 +1754,8 @@ async function webAutosave() {
       savedRevision = snapshotRevision
       await refreshWebRecovery()
     }
+  } catch {
+    // Ignore transient IndexedDB or quota errors during background web autosave.
   } finally {
     autosaving = false
   }

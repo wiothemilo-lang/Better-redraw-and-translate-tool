@@ -191,7 +191,11 @@ input[type="color"] { height: 35px; padding: 3px; }
 .overlays { position: absolute; inset: 0; pointer-events: none; }
 .outline { position: absolute; border: 1px dashed #258252; background: #37a7721d; pointer-events: auto; cursor: grab; padding: 0; }
 .outline[aria-current] { border: 2px solid #258252; }
-.stage.placing .outline { pointer-events: none; }
+.stage.placing .outline,
+.stage.placing .resize-handle,
+.stage.placing .rotate-handle,
+.stage.cleaning .resize-handle,
+.stage.cleaning .rotate-handle { pointer-events: none; }
 .outline.draft { pointer-events: none; }
 .status { min-height: 38px; font-size: .8rem; background: var(--paper); padding: 10px 13px; border-top: 1px solid var(--line); }
 .status[data-error] { color: #9c383e; }
