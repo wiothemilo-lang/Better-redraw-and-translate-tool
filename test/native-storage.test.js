@@ -80,16 +80,17 @@ test("a real write failure blocks commit and preserves the previous destination"
   const worker = new native.NativeWorker(executable)
   const directory = await mkdtemp(path.join(os.tmpdir(), "khung-thoai-write-damage-"))
   const wrapper = path.join(directory, "limited-worker.sh")
-  // A 4 MiB file size limit keeps the worker runnable while a multi-megabyte page or project
-  // chunk cannot be written to disk.
-  await writeFile(wrapper, `#!/bin/sh\ntrap '' XFSZ\nulimit -f 8192\nexec "${executable}" "$@"\n`)
+  // The limit has to sit well above what the runtime itself needs, or the runtime aborts with
+  // "Out of memory" before the write under test happens (4 MiB was enough to do that). 32 MiB
+  // leaves that headroom and still refuses a 64 MiB page or project chunk.
+  await writeFile(wrapper, `#!/bin/sh\ntrap '' XFSZ\nulimit -f 65536\nexec "${executable}" "$@"\n`)
   await chmod(wrapper, 0o755)
   const limited = new native.NativeWorker(wrapper)
   t.after(async () => { worker.close(); limited.close(); await rm(directory, { recursive: true, force: true }) })
-  // The runtime itself needs a few megabytes to start; a machine that needs more than this
-  // limit cannot run the injection, so it reports a skip instead of a failure.
+  // The runtime needs file budget of its own; a machine whose runtime needs more than the limit
+  // cannot run the injection, so it reports a skip instead of a failure.
   if (!await limited.call("preprocess", { width: 2, height: 2, scale: 1 }, Buffer.alloc(16, 128)).then(() => true, () => false))
-    return t.skip("The native worker needs more than the 4 MiB file size limit to start.")
+    return t.skip("The native worker needs more than the 32 MiB file size limit to start.")
   const target = path.join(directory, "chapter.zip")
   const { result } = await worker.call("zipBegin", { path: target })
   await worker.call("zipAppend", { id: result.id, name: "01.png" }, pngHeader)
@@ -97,7 +98,7 @@ test("a real write failure blocks commit and preserves the previous destination"
   const original = await readFile(target)
   const transfer = await limited.call("zipBegin", { path: target })
   await assert.rejects(
-    limited.call("zipAppend", { id: transfer.result.id, name: "02.png" }, Buffer.concat([pngHeader, Buffer.alloc(5 * 1024 * 1024)])),
+    limited.call("zipAppend", { id: transfer.result.id, name: "02.png" }, Buffer.concat([pngHeader, Buffer.alloc(64 * 1024 * 1024)])),
     /Could not write the ZIP page/,
   )
   await assert.rejects(limited.call("fileCommit", { id: transfer.result.id }), /temporary archive is incomplete/)
@@ -108,7 +109,7 @@ test("a real write failure blocks commit and preserves the previous destination"
   await worker.call("fileCommit", { id: first.result.id })
   const saved = await readFile(project)
   const damaged = await limited.call("fileBegin", { path: project, backup: true })
-  await assert.rejects(limited.call("fileAppend", { id: damaged.result.id }, Buffer.alloc(5 * 1024 * 1024)), /Could not write the project file/)
+  await assert.rejects(limited.call("fileAppend", { id: damaged.result.id }, Buffer.alloc(64 * 1024 * 1024)), /Could not write the project file/)
   await assert.rejects(limited.call("fileCommit", { id: damaged.result.id }), /temporary file is incomplete/)
   assert.deepEqual(await readFile(project), saved)
   const retry = await limited.call("zipBegin", { path: path.join(directory, "retry.zip") })
