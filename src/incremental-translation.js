@@ -35,7 +35,7 @@ const textual = (value, fallback = "") => (typeof value === "string" ? value : f
 
 // Mirrors the defaults `projectStyle` writes back, so a box keeps its digest across a save and a
 // reopen: an omitted `bold` and an explicit `bold: false` must hash the same, and a warp of zero
-// amount is no warp at all because the project drops the pair.
+// amount draws no bend, so the saved pair hashes like no warp at all.
 function styleInputs(box) {
   const warpAmount = numeric(box?.warpAmount)
   return {

@@ -60,7 +60,9 @@ export function projectStyle(style) {
     ...(uppercase && { uppercase }),
     ...(vertical && { vertical }),
     ...(bubbleFit && { bubbleFit }),
-    ...(warp !== "none" && warpAmount !== 0 && { warp, warpAmount }),
+    // A warp mode survives even at zero bend: the box is "curved" and the slider has somewhere to
+    // go, whereas dropping the pair silently turned it back into plain text after a save.
+    ...(warp !== "none" && { warp, warpAmount }),
     ...(lineHeight !== 1.15 && { lineHeight }),
     ...(strokeWidth > 0 && { strokeWidth, strokeColor }),
     ...(shadowBlur > 0 && { shadowBlur, shadowColor }),

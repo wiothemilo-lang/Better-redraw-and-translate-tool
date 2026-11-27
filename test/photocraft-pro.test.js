@@ -187,3 +187,16 @@ test("bubbleFit elliptical wrapping, text warp rendering, and projectStyle persi
     env.restore()
   }
 })
+
+test("projectStyle keeps a warp mode that has not been bent yet", () => {
+  const base = { size: 28, font: "Arial", color: "#111111", align: "center", rotation: 0, fill: true }
+
+  const flat = projectStyle({ ...base, warp: "arc", warpAmount: 0 })
+  assert.equal(flat.warp, "arc", "a zero bend is still an arc, not plain text")
+  assert.equal(flat.warpAmount, 0)
+
+  // Round-trips through the project file: saving and reloading must not quietly turn it into "none".
+  assert.deepEqual(projectStyle(flat).warp, "arc")
+  assert.equal(projectStyle({ ...base, warp: "none", warpAmount: 0 }).warp, undefined)
+  assert.equal(projectStyle({ ...base, warp: "wave", warpAmount: 12 }).warp, "wave")
+})
