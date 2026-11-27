@@ -97,29 +97,80 @@ export function validateSearchEndpoint(rawUrl) {
   return parsed.href.replace(/\/+$/, "")
 }
 
+const SKIP_SUBTREES = new Set(["script", "style", "noscript", "template", "iframe", "object", "svg"])
+const BLOCK_END = new Set(["p", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "section", "article"])
+
+// An element is hidden only when its own attributes say so. Searching the tag for the word anywhere
+// also matched a URL such as href="/hidden/page" and deleted text the reader can see.
+function hiddenByAttributes(attributes) {
+  if (/(^|\s)hidden(\s|=|\/|$)/i.test(attributes)) return true
+  if (/aria-hidden\s*=\s*["']?true["']?/i.test(attributes)) return true
+  return /style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^"']*["']/i.test(attributes)
+}
+
+// Walks the markup as a token stream so a hidden subtree ends where its own element ends: matching
+// `<tag ...hidden...>` up to the first `</tag>` cut a nested block in half and let the rest of the
+// hidden text through.
+function visibleHtmlText(html) {
+  const source = String(html || "")
+  const stack = []
+  let hidden = 0
+  let output = ""
+  let pos = 0
+  while (pos < source.length) {
+    const start = source.indexOf("<", pos)
+    if (start < 0) {
+      if (!hidden) output += source.slice(pos)
+      break
+    }
+    if (start > pos && !hidden) output += source.slice(pos, start)
+    if (source.startsWith("<!--", start)) {
+      const end = source.indexOf("-->", start + 4)
+      pos = end < 0 ? source.length : end + 3
+      continue
+    }
+    const end = source.indexOf(">", start + 1)
+    if (end < 0) {
+      if (!hidden) output += source.slice(start)
+      break
+    }
+    const raw = source.slice(start + 1, end).trim()
+    pos = end + 1
+    const closing = raw.startsWith("/")
+    const name = (closing ? raw.slice(1) : raw).split(/[\s/]/, 1)[0].toLowerCase()
+    if (!raw || raw.startsWith("!") || raw.startsWith("?") || !name) {
+      if (!hidden) output += " "
+      continue
+    }
+    if (!hidden) output += name === "br" || (closing && BLOCK_END.has(name)) ? "\n" : " "
+    if (closing) {
+      // Pop to the matching open element, releasing whatever hidden subtrees were opened inside it.
+      let at = -1
+      for (let i = stack.length - 1; i >= 0; i--) if (stack[i].name === name) { at = i; break }
+      if (at >= 0) {
+        for (let i = stack.length - 1; i >= at; i--) if (stack[i].hidden) hidden--
+        stack.length = at
+      }
+      continue
+    }
+    if (VOID_TAGS.has(name) || raw.endsWith("/")) continue
+    const isHidden = SKIP_SUBTREES.has(name) || hiddenByAttributes(raw)
+    stack.push({ name, hidden: isHidden })
+    if (isHidden) hidden++
+  }
+  return output
+}
+
 export function stripHtmlToText(html, maxChars = 8000) {
   const raw = String(html || "")
   if (exceedsHtmlDepth(raw)) return "[Nội dung HTML quá sâu — đã bỏ qua để đảm bảo an toàn.]"
-  const cleaned = raw
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, " ")
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, " ")
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, " ")
-    .replace(/<embed\b[^>]*>/gi, " ")
-    .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, " ")
-    .replace(/<([a-z0-9-]+)\b[^>]*(?:\bhidden\b|aria-hidden\s*=\s*["']?true["']?|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^"']*["'])[^>]*>[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<\/(p|div|li|tr|h[1-6]|br|section|article)>/gi, "\n")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
+  const text = visibleHtmlText(raw)
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
-  const text = cleaned
     .replace(/[ \t\r\f\v]+/g, " ")
     .replace(/\n[ \t]+/g, "\n")
     .replace(/\n{3,}/g, "\n\n")

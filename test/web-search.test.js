@@ -363,3 +363,25 @@ test("desktop search and fetch abort through the bridge instead of resolving lat
   assert.equal(calls.at(-1).options.maxChars, 1200)
   assert.equal(typeof calls.at(-1).options.id, "string")
 })
+
+test("stripHtmlToText drops hidden subtrees by element, not by the word hidden anywhere in the tag", () => {
+  for (const strip of [stripHtmlToText, desktopSearch.stripHtmlToText]) {
+    // A nested element inside a hidden block: the closing tag that ends the hidden subtree is the
+    // outer one, so the paragraph after the inner block must not survive.
+    assert.equal(
+      strip("<div hidden><p>a</p><div><p>b</p></div><p>c</p></div><p>visible</p>"),
+      "visible",
+    )
+    // "hidden" inside an attribute value is part of a URL, not a reason to delete visible text.
+    assert.equal(strip('<a href="/hidden/page">QUAN TRONG</a>'), "QUAN TRONG")
+    // Void tags and hidden attributes in their own opening tags behave the same way.
+    assert.equal(strip('<p>a<br>b</p><img src="/hidden/x.png" alt="hidden"><p>c</p>'), "a\nb\nc")
+    // An unclosed hidden block keeps swallowing text: better a missing line than injected instructions.
+    assert.equal(strip("<p>one</p><div hidden>hidden<p>two"), "one")
+    // Content of skip tags, however deeply nested, never reaches the model.
+    assert.equal(
+      strip("<div><p>keep</p><script>var a = '<p>fake</p>'</script><style>.x{}</style></div>"),
+      "keep",
+    )
+  }
+})
