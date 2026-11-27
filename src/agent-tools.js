@@ -410,7 +410,11 @@ export function createAgentTools({
       },
       async run(args) {
         const { page } = resolvePage(state, selectedPage, args?.pageIndex)
-        const targetPage = page ?? state.pages.find((p) => p.boxes.some((b) => b.id === args?.boxId))
+        // The current page is always truthy, so the lookup has to fall back when the id is not on
+        // it: a box the model just created (or read) may live on another page of the chapter.
+        const targetPage = page?.boxes.some((b) => b.id === args?.boxId)
+          ? page
+          : state.pages.find((p) => p.boxes.some((b) => b.id === args?.boxId))
         const box = targetPage?.boxes.find((b) => b.id === args?.boxId)
         if (!box) throw new Error("Không tìm thấy khung thoại với ID: " + args?.boxId)
 
@@ -486,13 +490,25 @@ export function createAgentTools({
         if (typeof args?.fill === "boolean") box.fill = args.fill
         if (typeof args?.cleanup === "boolean") box.cleanup = args.cleanup
         page.boxes.push(box)
+        // The box lands on the page the model named, so the editor follows it there: selecting an
+        // id that lives on a page nobody is looking at leaves the user staring at an unchanged
+        // page and the model chasing a box it cannot reach. A pending review keeps the live view
+        // alone, because none of its boxes are in the project yet.
+        if (!draft && page.id !== state.pageId) {
+          if (selectPage) selectPage(page)
+          else {
+            state.pageId = page.id
+            state.selectedBoxIds?.clear()
+          }
+        }
         state.boxId = box.id
         state.selectedBoxIds?.clear()
         state.selectedBoxIds?.add(box.id)
         render()
+        const pageIndex = state.pages.indexOf(page) + 1
         return {
-          summary: `Đã tạo khung mới "${text.slice(0, 40)}"`,
-          data: { id: box.id, x, y, w, h, text },
+          summary: `Đã tạo khung mới "${text.slice(0, 40)}" trên trang ${pageIndex} (${page.name})`,
+          data: { id: box.id, x, y, w, h, text, pageIndex, pageName: page.name },
         }
       },
     },
@@ -512,8 +528,10 @@ export function createAgentTools({
       },
       async run(args) {
         const { page } = resolvePage(state, selectedPage, args?.pageIndex)
-        const targetPage = page ?? state.pages.find((p) => p.boxes.some((b) => b.id === args?.boxId))
-        if (!targetPage || !targetPage.boxes.some((b) => b.id === args?.boxId)) {
+        const targetPage = page?.boxes.some((b) => b.id === args?.boxId)
+          ? page
+          : state.pages.find((p) => p.boxes.some((b) => b.id === args?.boxId))
+        if (!targetPage) {
           throw new Error("Không tìm thấy khung cần xóa.")
         }
         commitLiveForm?.()

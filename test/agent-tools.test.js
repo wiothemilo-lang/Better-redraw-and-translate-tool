@@ -11,16 +11,23 @@ function setup({ pages, selected = 0 } = {}) {
     selectedBoxIds: new Set(),
     queue: [],
   }
+  let boxSeq = 0
   const tools = createAgentTools({
     state,
     byId: () => null,
     selectedPage: () => state.pages.find((page) => page.id === state.pageId) ?? null,
     selectedIndex: () => state.pages.findIndex((page) => page.id === state.pageId),
-    selectPage: (page) => { state.pageId = page.id },
+    // The editor's selectPage drops the box selection, exactly like main.js.
+    selectPage: (page) => {
+      state.pageId = page.id
+      state.boxId = null
+      state.selectedBoxIds.clear()
+    },
     checkpoint: () => {},
     render: () => {},
     readTranslationSettings: () => ({ source: "Japanese", target: "Vietnamese", glossary: "" }),
     textOverflowsFn: () => false,
+    makeBoxFn: (_page, rect, text) => box(`new-${++boxSeq}`, text, rect),
   })
   return { state, tools }
 }
@@ -79,4 +86,40 @@ test("a page-scoped preflight and QA scan report the page's real number and reje
   const whole = await tools.execute("lint_chapter_qa", {})
   assert.equal(whole.ok, true)
   assert.deepEqual([...new Set(whole.data.issues.map((issue) => issue.pageIndex))], [2])
+})
+
+test("create_box on another page moves the editor there and keeps the new box reachable", async () => {
+  const { state, tools } = setup({ pages: [page("p1", [box("b1", "Trang một")]), page("p2", [])] })
+
+  const created = await tools.execute("create_box", { text: "X", pageIndex: 2 }, { allowEdits: true })
+  assert.equal(created.ok, true)
+  assert.equal(created.data.pageIndex, 2)
+  assert.equal(created.data.pageName, "p2.png")
+  assert.equal(state.pageId, "p2", "the editor must show the page the box was created on")
+  assert.equal(state.boxId, created.data.id)
+  assert.deepEqual([...state.selectedBoxIds], [created.data.id])
+  assert.equal(state.pages[1].boxes.length, 1)
+
+  // The model can keep editing the box it just made instead of losing its id.
+  const updated = await tools.execute("update_box", { boxId: created.data.id, text: "Y" }, { allowEdits: true })
+  assert.equal(updated.ok, true)
+  assert.equal(state.pages[1].boxes[0].text, "Y")
+})
+
+test("update_box and delete_box reach a box that lives on another page", async () => {
+  const { state, tools } = setup({
+    pages: [page("p1", [box("b1", "Trang một")]), page("p2", [box("b2", "Trang hai")])],
+  })
+
+  const updated = await tools.execute("update_box", { boxId: "b2", text: "Sửa từ xa" }, { allowEdits: true })
+  assert.equal(updated.ok, true)
+  assert.equal(state.pages[1].boxes[0].text, "Sửa từ xa")
+
+  const deleted = await tools.execute("delete_box", { boxId: "b2" }, { allowEdits: true })
+  assert.equal(deleted.ok, true)
+  assert.equal(state.pages[1].boxes.length, 0)
+
+  const missing = await tools.execute("update_box", { boxId: "nope", text: "x" }, { allowEdits: true })
+  assert.equal(missing.ok, false)
+  assert.match(missing.error, /Không tìm thấy khung thoại/)
 })
