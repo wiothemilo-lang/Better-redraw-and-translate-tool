@@ -358,7 +358,9 @@ export function createAgentTools({
         })
         return {
           summary: `Tìm thấy ${matches.length} khung khớp "${args?.query}"`,
-          data: { matches: matches.slice(0, 40) },
+          // findMatches indexes the pages array; every tool the model sees speaks 1-based page
+          // numbers, so a match is reported the same way navigate_page and list_boxes do.
+          data: { matches: matches.slice(0, 40).map((match) => ({ ...match, pageIndex: match.pageIndex + 1 })) },
         }
       },
     },
