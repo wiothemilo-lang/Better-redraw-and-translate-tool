@@ -49,6 +49,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Build the commit the release tag points at, not whatever the dispatch ran on.
+          ref: ${{ needs.meta.outputs.tag }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -81,6 +84,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Build the commit the release tag points at, not whatever the dispatch ran on.
+          ref: ${{ needs.meta.outputs.tag }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -125,6 +131,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Build the commit the release tag points at, not whatever the dispatch ran on.
+          ref: ${{ needs.meta.outputs.tag }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -180,6 +189,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Build the commit the release tag points at, not whatever the dispatch ran on.
+          ref: ${{ needs.meta.outputs.tag }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
