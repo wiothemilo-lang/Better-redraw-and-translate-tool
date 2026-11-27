@@ -51,3 +51,32 @@ test("search_chapter_text reports 1-based page numbers like every other tool", a
   const navigation = await tools.execute("navigate_page", { pageIndex: res.data.matches[0].pageIndex })
   assert.equal(navigation.data.pageName, res.data.matches[0].pageName)
 })
+
+test("a page-scoped preflight and QA scan report the page's real number and reject a page that is not there", async () => {
+  const { tools } = setup({
+    pages: [
+      page("p1", [box("b1", "Trang một ổn")]),
+      // An empty box is what lintChapter reports as empty_or_placeholder.
+      page("p2", [box("b2", "   ")]),
+    ],
+  })
+
+  for (const name of ["check_export_preflight", "lint_chapter_qa"]) {
+    const scoped = await tools.execute(name, { pageIndex: 2 })
+    assert.equal(scoped.ok, true, name)
+    const issues = scoped.data.issues
+    assert.ok(issues.length, `${name} should report the empty box`)
+    assert.deepEqual([...new Set(issues.map((issue) => issue.pageIndex))], [2], name)
+    assert.deepEqual([...new Set(issues.map((issue) => issue.pageName))], ["p2.png"], name)
+
+    // A page that does not exist is an error, never an "empty project" answer.
+    const outOfRange = await tools.execute(name, { pageIndex: 99 })
+    assert.equal(outOfRange.ok, false, name)
+    assert.match(outOfRange.error, /Không tồn tại trang số 99/, name)
+  }
+
+  // The full-chapter scan keeps numbering from the start and still sees both pages.
+  const whole = await tools.execute("lint_chapter_qa", {})
+  assert.equal(whole.ok, true)
+  assert.deepEqual([...new Set(whole.data.issues.map((issue) => issue.pageIndex))], [2])
+})

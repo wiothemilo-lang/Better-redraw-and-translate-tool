@@ -69,6 +69,16 @@ function resolvePage(state, selectedPage, pageIndex) {
   return { page: current ?? null, index }
 }
 
+// A page-scoped read still reports project-wide page numbers. The offset is where the filtered
+// slice starts in the project, so a finding from a scoped lint never claims to be on page 1, and
+// an out-of-range page is an error instead of an empty scan dressed up as an empty project.
+function resolveTargetPages(state, selectedPage, pageIndex) {
+  if (!Number.isInteger(pageIndex)) return { pages: state.pages, offset: 0 }
+  const { page } = resolvePage(state, selectedPage, pageIndex)
+  if (!page) throw new Error(`Không tồn tại trang số ${pageIndex}.`)
+  return { pages: [page], offset: state.pages.indexOf(page) }
+}
+
 function defaultCapturePageImage(page, { box = null, maxDim = 768 } = {}) {
   const img = page?.image
   const natW = img?.naturalWidth ?? 0
@@ -775,9 +785,7 @@ export function createAgentTools({
         },
       },
       async run(args) {
-        const targetPages = Number.isInteger(args?.pageIndex)
-          ? [resolvePage(state, selectedPage, args.pageIndex).page].filter(Boolean)
-          : state.pages
+        const { pages: targetPages, offset } = resolveTargetPages(state, selectedPage, args?.pageIndex)
         if (!targetPages.length) {
           return { summary: "Chưa có trang nào trong dự án.", data: { totalIssues: 0, issues: [] } }
         }
@@ -829,7 +837,7 @@ export function createAgentTools({
           if (item.severity !== "warning") continue
           issues.push({
             type: item.type,
-            pageIndex: item.pageIndex,
+            pageIndex: item.pageIndex + offset,
             pageName: item.pageName,
             boxId: item.boxId,
             text: item.message,
@@ -857,9 +865,7 @@ export function createAgentTools({
         },
       },
       async run(args) {
-        const targetPages = Number.isInteger(args?.pageIndex)
-          ? [resolvePage(state, selectedPage, args.pageIndex).page].filter(Boolean)
-          : state.pages
+        const { pages: targetPages, offset } = resolveTargetPages(state, selectedPage, args?.pageIndex)
         if (!targetPages.length) {
           return { summary: "Không có trang nào để rà QA.", data: { total: 0, byType: {}, issues: [] } }
         }
@@ -873,7 +879,7 @@ export function createAgentTools({
           summary: qa.total
             ? `Phát hiện ${qa.total} lỗi QA (sót gốc: ${qa.byType.untranslated_source}, thuật ngữ: ${qa.byType.glossary_violation}, dấu câu: ${qa.byType.punctuation_spacing})`
             : `Không có lỗi QA nào trên ${targetPages.length} trang`,
-          data: qa,
+          data: { ...qa, issues: qa.issues.map((item) => ({ ...item, pageIndex: item.pageIndex + offset })) },
         }
       },
     },
@@ -898,9 +904,7 @@ export function createAgentTools({
             data: { active: false, total: 0, byType: {}, issues: [] },
           }
         }
-        const targetPages = Number.isInteger(args?.pageIndex)
-          ? [resolvePage(state, selectedPage, args.pageIndex).page].filter(Boolean)
-          : state.pages
+        const { pages: targetPages, offset } = resolveTargetPages(state, selectedPage, args?.pageIndex)
         if (!targetPages.length) {
           return { summary: "Không có trang nào để rà phong cách.", data: { active: true, total: 0, byType: {}, issues: [] } }
         }
@@ -909,7 +913,7 @@ export function createAgentTools({
           summary: qa.total
             ? `Phát hiện ${qa.total} lỗi phong cách (ngoặc kép: ${qa.byType.quote_style}, viết hoa: ${qa.byType.casing}, SFX: ${qa.byType.sfx})`
             : `Không có lỗi phong cách nào trên ${targetPages.length} trang`,
-          data: { active: true, ...qa },
+          data: { active: true, ...qa, issues: qa.issues.map((item) => ({ ...item, pageIndex: item.pageIndex + offset })) },
         }
       },
     },
