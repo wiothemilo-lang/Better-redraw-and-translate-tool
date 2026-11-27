@@ -218,6 +218,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       - uses: actions/download-artifact@v8
         with:
           path: release-assets
@@ -233,6 +236,15 @@ jobs:
           TAG: ${{ needs.meta.outputs.tag }}
           VER: ${{ needs.meta.outputs.version }}
         run: |
+          # An RPM filename splits a prerelease version into version and release (1.2.0-beta.1 becomes
+          # khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm), so the name in the notes is read from the
+          # artifacts themselves instead of being spelled out from the tag.
+          RPM_FILE=$(cd release-assets && ls -1 *.rpm | head -n 1)
+          if [ -z "$RPM_FILE" ]; then
+            echo "No .rpm artifact was uploaded; refusing to write release notes that point at nothing."
+            exit 1
+          fi
+
           cat << EOF > release-notes.md
           # Nixio (Khung Thoại) ${TAG}
 
@@ -248,7 +260,7 @@ jobs:
           | **macOS (Intel, x64)** | \`Khung-Thoai-${VER}-mac-x64.dmg\` | Mở tệp \`.dmg\` và kéo **Khung Thoại** vào \`Applications\` |
           | **macOS (Portable)** | \`Khung-Thoai-${VER}-mac-arm64.zip\` / \`Khung-Thoai-${VER}-mac-x64.zip\` | Giải nén và mở \`Khung-Thoai.app\` |
           | **Ubuntu / Debian / Mint / Pop!_OS (x64)** | \`khung-thoai_${VER}_amd64.deb\` | \`sudo apt install ./khung-thoai_${VER}_amd64.deb\` |
-          | **Fedora Linux (x64)** | \`khung-thoai-${VER}-1.x86_64.rpm\` | \`sudo dnf install ./khung-thoai-${VER}-1.x86_64.rpm\` |
+          | **Fedora Linux (x64)** | \`${RPM_FILE}\` | \`sudo dnf install ./${RPM_FILE}\` |
           | **Linux khác (Portable x64)** | \`khung-thoai-${VER}-linux-x64.tar.gz\` | Giải nén và chạy \`./Khung-Thoai\` |
 
           ## Bật OCR cục bộ (tùy chọn)
@@ -273,6 +285,10 @@ jobs:
 
           Kiểm tra toàn vẹn tệp bằng \`SHA256SUMS.txt\`.
           EOF
+
+          # Every file the notes advertise has to be in the release, or a download link is dead and
+          # nobody finds out until a user clicks it.
+          node scripts/check-release-notes.mjs release-notes.md release-assets
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --title "Nixio (Khung Thoại) ${TAG}" --notes-file release-notes.md

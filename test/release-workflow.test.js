@@ -40,3 +40,15 @@ test("every release build job checks out the commit the release tag points at", 
   // make `ref` depend on its own output.
   assert.doesNotMatch(joined(blocks, "meta"), /ref: \$\{\{ needs\.meta\.outputs\.tag \}\}/)
 })
+
+test("the release notes take the RPM file name from the artifacts and every name they mention exists", async () => {
+  const blocks = await jobs()
+  const publish = joined(blocks, "publish")
+  // The RPM file name splits a prerelease version (1.2.0-beta.1 => khung-thoai-1.2.0-0.1.beta.1...),
+  // so a name rewritten from the tag does not exist on prereleases.
+  assert.doesNotMatch(publish, /khung-thoai-\$\{VER\}-1\.x86_64\.rpm/)
+  assert.match(publish, /RPM_FILE=\$\(cd release-assets && ls -1 \*\.rpm \| head -n 1\)/)
+  assert.match(publish, /\| \*\*Fedora Linux \(x64\)\*\* \| \\`\$\{RPM_FILE\}\\` \|/)
+  // And the notes are not published until their file names are checked against the assets.
+  assert.match(publish, /node scripts\/check-release-notes\.mjs release-notes\.md release-assets/)
+})
