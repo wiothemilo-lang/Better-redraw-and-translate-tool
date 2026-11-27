@@ -95,6 +95,9 @@ export function setupLibrary(importPages) {
       chapterSelect.replaceChildren()
       get("reader").hidden = true
       get("reader-images").replaceChildren()
+      // A filter the previous catalogue was searched with would hide the new one: the panel would
+      // report "Đã nhập N truyện" and then show "Không tìm thấy truyện." next to nothing.
+      get("catalog-search").value = ""
       renderResults()
       syncAbilities()
       if (seriesList.length === 1) selectSeries(seriesList[0])
