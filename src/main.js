@@ -15,6 +15,7 @@ import {
   MAX_GLOBAL_PRESETS,
   mergePresets,
   parsePresetsJson,
+  PRESET_RESET_DEFAULTS,
   saveGlobalPresets,
   serializePresetsJson,
 } from "./presets.js"
@@ -1170,14 +1171,7 @@ byId("apply-preset").onclick = () => {
         : [selectedBox()].filter(Boolean)
   if (!boxes.length) return status(msg("status.preset.needBox"), true)
   checkpoint(undefined, { label: `Áp dụng mẫu "${preset.name}" cho ${boxes.length} khung`, kind: "preset" })
-  const defaults = {
-    bold: false, italic: false, uppercase: false, vertical: false,
-    bubbleFit: false, warp: "none", warpAmount: 0,
-    lineHeight: 1.15, strokeWidth: 0, strokeColor: "#ffffff",
-    shadowBlur: 0, shadowColor: "#000000",
-    fillColor: "#ffffff", fillShape: "rect",
-  }
-  boxes.forEach((box) => Object.assign(box, defaults, preset.style))
+  boxes.forEach((box) => Object.assign(box, PRESET_RESET_DEFAULTS, preset.style))
   render()
   status(msg("status.preset.applied", { count: boxes.length }))
 }

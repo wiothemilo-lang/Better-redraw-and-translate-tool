@@ -3,6 +3,17 @@ import { projectStyle } from "./project.js"
 export const GLOBAL_PRESETS_KEY = "khung-thoai-global-presets"
 export const MAX_GLOBAL_PRESETS = 60
 
+// Presets are stored sparse, so a field the preset never mentions keeps whatever the box had.
+// Applying one therefore resets the fields a preset is allowed to omit, or a saved SFX curve
+// would survive a plain-dialogue preset. The editor button and the agent tool share this list.
+export const PRESET_RESET_DEFAULTS = Object.freeze({
+  bold: false, italic: false, uppercase: false, vertical: false,
+  bubbleFit: false, warp: "none", warpAmount: 0,
+  lineHeight: 1.15, strokeWidth: 0, strokeColor: "#ffffff",
+  shadowBlur: 0, shadowColor: "#000000",
+  fillColor: "#ffffff", fillShape: "rect",
+})
+
 export const DEFAULT_STARTER_PRESETS = [
   {
     name: "Thoại thường",

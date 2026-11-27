@@ -207,3 +207,42 @@ test("Agent Tools v2: todo_write, submit_plan (Plan Mode), check_export_prefligh
   const navZero = await tools.execute("navigate_page", { pageIndex: 0 })
   assert.equal(navZero.ok, false)
 })
+
+test("apply_style_preset clears the warp and bubbleFit a saved preset leaves out", async () => {
+  const page = {
+    id: "p1",
+    name: "01.png",
+    image: { naturalWidth: 800, naturalHeight: 1200 },
+    boxes: [{
+      id: "b1", text: "BÙM", x: .1, y: .1, w: .3, h: .2, size: 44, font: "Arial", color: "#111111", align: "center",
+      rotation: -8, fill: false, bubbleFit: true, warp: "arc", warpAmount: 30, strokeWidth: 4, strokeColor: "#111111",
+    }],
+    unplaced: [],
+  }
+  const state = {
+    pages: [page],
+    // Stored sparse on purpose: "Thoại thường" says nothing about warp or bubbleFit.
+    presets: [{ name: "Thoại thường", style: { size: 26, font: "Arial", color: "#171717", align: "center", rotation: 0, fill: false } }],
+    pageId: "p1",
+    boxId: "b1",
+    selectedBoxIds: new Set(["b1"]),
+    queue: [],
+  }
+  const tools = createAgentTools({
+    state,
+    byId: () => null,
+    selectedPage: () => page,
+    selectedIndex: () => 0,
+    checkpoint: () => {},
+    render: () => {},
+  })
+
+  const res = await tools.execute("apply_style_preset", { presetName: "Thoại thường", scope: "box", boxId: "b1" }, { allowEdits: true })
+  assert.equal(res.ok, true)
+  assert.equal(page.boxes[0].size, 26)
+  // Same result as the "Áp dụng mẫu" button: the fields a preset may omit fall back to neutral.
+  assert.equal(page.boxes[0].warp, "none")
+  assert.equal(page.boxes[0].warpAmount, 0)
+  assert.equal(page.boxes[0].bubbleFit, false)
+  assert.equal(page.boxes[0].strokeWidth, 0)
+})

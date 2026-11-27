@@ -12,6 +12,7 @@ import {
   termSummary,
 } from "./terminology-graph.js"
 import { normalizeFontName } from "./fonts.js"
+import { PRESET_RESET_DEFAULTS } from "./presets.js"
 import { lintStyleGuide, normalizeStyleGuide } from "./style-guide.js"
 import { alignBoxes, distributeBoxes, findMatches, replaceMatches } from "./tools.js"
 import { createToolRegistry } from "./tool-registry.js"
@@ -1083,13 +1084,7 @@ export function createAgentTools({
         if (!boxes.length) throw new Error("Không có khung thoại nào trong phạm vi áp dụng.")
         commitLiveForm?.()
         checkpoint()
-        const defaults = {
-          bold: false, italic: false, uppercase: false, vertical: false,
-          lineHeight: 1.15, strokeWidth: 0, strokeColor: "#ffffff",
-          shadowBlur: 0, shadowColor: "#000000",
-          fillColor: "#ffffff", fillShape: "rect",
-        }
-        boxes.forEach((box) => Object.assign(box, defaults, preset.style))
+        boxes.forEach((box) => Object.assign(box, PRESET_RESET_DEFAULTS, preset.style))
         render()
         return {
           summary: `Đã áp dụng mẫu "${preset.name}" cho ${boxes.length} khung (${scope})`,
