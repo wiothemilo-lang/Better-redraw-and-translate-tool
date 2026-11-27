@@ -49,6 +49,9 @@ export async function benchmark() {
         const inner = { left: left - sx, top: top - sy, right: right - sx, bottom: bottom - sy }
         const start = performance.now()
         const { data: patch } = await worker.call("redraw", { width, height, inner }, pixels)
+        // Only the native call is timed. The pixel comparison below scales with the rect area, so
+        // counting it as latency made big regions look slower than small ones on the same worker.
+        const milliseconds = performance.now() - start
         let count = 0, before = 0, after = 0, background = 0, changedBackground = 0
         for (let y = top; y < bottom; y++) {
           for (let x = left; x < right; x++) {
@@ -71,7 +74,7 @@ export async function benchmark() {
         }
         report.redraw.push({
           pair: pair.id, id: item.id, beforeMae: before / Math.max(1, count * 3), afterMae: after / Math.max(1, count * 3),
-          backgroundChangeRate: changedBackground / Math.max(1, background), milliseconds: performance.now() - start,
+          backgroundChangeRate: changedBackground / Math.max(1, background), milliseconds,
           maxMae: item.maxMae, maxBackgroundChangeRate, conservative: item.conservative ?? false,
         })
       }

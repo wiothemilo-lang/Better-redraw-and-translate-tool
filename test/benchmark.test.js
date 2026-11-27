@@ -71,3 +71,17 @@ test("OCR character error handles Unicode and whitespace", () => {
   assert.equal(characterErrorRate("こんにちは", "こ んにちは"), 0)
   assert.equal(characterErrorRate("abc", "axc"), 1 / 3)
 })
+
+test("the redraw benchmark times only the native call, not the pixel comparison", async () => {
+  // The comparison loop walks the rect pixel by pixel; counting it as latency made large regions
+  // look slower on the same worker and skewed the trend in artifacts/benchmark.json.
+  const source = await readFile(path.join(root, "scripts/benchmark.mjs"), "utf8")
+  const call = source.indexOf('await worker.call("redraw"')
+  const stop = source.indexOf("const milliseconds = performance.now() - start")
+  const analysis = source.indexOf("for (let y = top; y < bottom; y++)")
+  assert.ok(call > 0 && stop > 0 && analysis > 0)
+  assert.ok(stop > call, "the stopwatch has to stop after the worker answers")
+  assert.ok(stop < analysis, "and before the pixel comparison starts")
+  assert.match(source, /milliseconds,/)
+  assert.doesNotMatch(source, /milliseconds: performance\.now\(\) - start/)
+})
