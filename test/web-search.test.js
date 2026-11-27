@@ -442,3 +442,26 @@ test("a malformed percent escape in a Wikipedia URL falls back instead of failin
   assert.equal(requested.length, 1, "the API call is skipped, not repeated")
   assert.equal(requested[0], "https://vi.wikipedia.org/wiki/%E0")
 })
+
+test("the web and desktop URL guards refuse the same reserved IPv4 ranges", () => {
+  const reserved = [
+    "192.0.0.5", "192.0.2.1", "198.18.0.1", "198.19.255.254",
+    "198.51.100.7", "203.0.113.9", "224.0.0.1", "239.255.255.250", "255.255.255.255",
+  ]
+  for (const host of reserved) {
+    const url = `https://${host}/x`
+    assert.equal(isSafePublicHttpsUrl(url), null, `${host} must be refused by the web guard`)
+    assert.equal(desktopSearch.isSafePublicHttpsUrl(url), null, `${host} must be refused by the desktop guard`)
+  }
+
+  // Both guards agree on every case, including the addresses that are fine.
+  for (const host of [...reserved, "93.184.216.34", "10.0.0.1", "172.20.0.1", "100.64.0.1", "example.org"]) {
+    const url = `https://${host}/x`
+    assert.equal(
+      isSafePublicHttpsUrl(url) === null,
+      desktopSearch.isSafePublicHttpsUrl(url) === null,
+      `${host} is classified differently by the two guards`,
+    )
+  }
+  assert.equal(isSafePublicHttpsUrl("https://93.184.216.34/x"), "https://93.184.216.34/x")
+})

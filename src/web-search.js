@@ -51,11 +51,20 @@ function isPrivateIpv4(host) {
   if (!match) return false
   const parts = match.slice(1).map(Number)
   if (parts.some((n) => n > 255)) return true
-  if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return true
-  if (parts[0] === 169 && parts[1] === 254) return true
-  if (parts[0] === 192 && parts[1] === 168) return true
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true
-  if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true
+  const [a, b, c] = parts
+  if (a === 0 || a === 10 || a === 127) return true
+  if (a === 169 && b === 254) return true
+  if (a === 192 && b === 168) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 100 && b >= 64 && b <= 127) return true
+  // The same reserved, documentation and benchmark blocks desktop/web-search.cjs refuses: leaving
+  // them out here let an address through in the browser that the desktop shell would never fetch.
+  if (a === 192 && b === 0) return true
+  if (a === 198 && (b === 18 || b === 19)) return true
+  if (a === 198 && b === 51 && c === 100) return true
+  if (a === 203 && b === 0 && c === 113) return true
+  // Multicast, reserved and broadcast space.
+  if (a >= 224) return true
   return false
 }
 
