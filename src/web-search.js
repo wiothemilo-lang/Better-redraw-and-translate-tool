@@ -294,9 +294,18 @@ export async function searchWeb(
 
   // Auto mode: prefer Electron main-process search (DuckDuckGo + Jisho + Wikipedia, no CORS limits).
   const bridge = globalThis.khungThoaiDesktop ?? desktop
+  let bridgeFailed = false
   if (bridge?.webSearch) {
-    const data = await desktopRequest(bridge, "webSearch", clean, { limit: capped }, signal)
-    return { query: clean, provider: "desktop", results: data?.results ?? [] }
+    try {
+      const data = await desktopRequest(bridge, "webSearch", clean, { limit: capped }, signal)
+      return { query: clean, provider: "desktop", results: data?.results ?? [] }
+    } catch (error) {
+      // A cancelled turn has to stay cancelled. Anything else — a crashed main process, a broken IPC
+      // channel, a bridge that throws synchronously — must not take the browser's own fallback with
+      // it, or one bad bridge call leaves the tool with no results at all.
+      if (signal?.aborted || error?.name === "AbortError") throw error
+      bridgeFailed = true
+    }
   }
 
   // Web browser fallback: CORS-friendly Wikipedia API (vi/en/ja).
@@ -314,7 +323,7 @@ export async function searchWeb(
     }
     if (results.length >= capped) break
   }
-  return { query: clean, provider: "wikipedia", results }
+  return { query: clean, provider: bridgeFailed ? "wikipedia-fallback" : "wikipedia", results }
 }
 
 export async function fetchWebPage(rawUrl, { maxChars = 8000, signal } = {}) {

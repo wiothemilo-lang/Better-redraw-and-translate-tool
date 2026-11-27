@@ -385,3 +385,37 @@ test("stripHtmlToText drops hidden subtrees by element, not by the word hidden a
     )
   }
 })
+
+test("auto web search falls back to the CORS sources when the desktop bridge throws", async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    delete globalThis.khungThoaiDesktop
+  })
+  globalThis.fetch = async (url) => {
+    assert.match(url, /wikipedia\.org/)
+    return {
+      ok: true,
+      json: async () => ({ query: { search: [{ title: "Manga", snippet: "<span>Truyện tranh</span>" }] } }),
+    }
+  }
+  const { searchWeb } = await import("../src/web-search.js")
+
+  // A bridge that rejects: the search used to reject with it instead of asking anyone else.
+  globalThis.khungThoaiDesktop = { webSearch: async () => { throw new Error("bridge exploded") } }
+  const threw = await searchWeb("manga")
+  assert.equal(threw.provider, "wikipedia-fallback")
+  assert.ok(threw.results.length > 0)
+  assert.match(threw.results[0].url, /wikipedia\.org\/wiki\/Manga$/)
+  assert.equal(threw.results[0].title, "Manga")
+
+  // A bridge that throws synchronously is just another broken bridge.
+  globalThis.khungThoaiDesktop = { webSearch: () => { throw new Error("no ipc") } }
+  assert.equal((await searchWeb("manga")).provider, "wikipedia-fallback")
+
+  // A cancelled turn is not a broken bridge: it must still reject.
+  const controller = new AbortController()
+  controller.abort()
+  globalThis.khungThoaiDesktop = { webSearch: async () => { throw new Error("bridge exploded") } }
+  await assert.rejects(searchWeb("manga", { signal: controller.signal }), { name: "AbortError" })
+})
