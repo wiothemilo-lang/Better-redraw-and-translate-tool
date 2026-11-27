@@ -120,6 +120,9 @@ export async function openDesktopProject(mode) {
     const file = new File(chunks, transfer.name)
     file.nativeOpenId = transfer.id
     file.projectId = transfer.projectId
+    // The catalogue's title for the project, when the shell knows it: a snapshot file is named
+    // after its timestamp and must not rename the project.
+    file.projectTitle = transfer.title || null
     file.recovery = transfer.recovery
     return file
   } catch (error) {

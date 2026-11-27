@@ -305,7 +305,9 @@ export function setupProjects({
       projectSettings.forEach((field) => {
         field.value = project.settings[field.id]
       })
-      projectName = filenameStem(file.name)
+      // A restored snapshot is named after its timestamp, so the title the shell read from the
+      // catalogue wins over the file name; autosave would otherwise rename the project to a UUID.
+      projectName = file.projectTitle || filenameStem(file.name)
       selectPage(loaded[project.currentPage])
       onProjectSwitch?.()
       status(`Đã mở dự án với ${loaded.length} trang.`)

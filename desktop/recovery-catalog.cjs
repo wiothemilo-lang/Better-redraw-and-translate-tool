@@ -22,6 +22,15 @@ class RecoveryCatalog {
     catch { return { id, title: "Dự án", updatedAt: 0, path: null } }
   }
 
+  // The title the user gave the project, or null when it has no catalogue entry yet: metadata()
+  // fabricates a default for that case, and a default must never replace a real file name.
+  async title(id) {
+    try {
+      const metadata = JSON.parse(await readFile(path.join(this.folder(id), "metadata.json"), "utf8"))
+      return typeof metadata?.title === "string" && metadata.title.trim() ? metadata.title.trim() : null
+    } catch { return null }
+  }
+
   async update(id, changes) {
     const run = async () => {
       const folder = this.folder(id)

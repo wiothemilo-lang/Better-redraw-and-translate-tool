@@ -42,7 +42,13 @@ class ProjectFiles {
     const id = randomUUID()
     this.readers.set(id, { nativeId: info.id, size: info.size, offset: 0 })
     if (!isRecovery && !["recovery", "backup"].includes(mode)) this.candidates.set(id, file)
-    return { id, name: path.basename(file), size: info.size, projectId, recovery: isRecovery || ["recovery", "backup"].includes(mode) }
+    // A catalogue snapshot is named after its timestamp, so the title the user gave the project
+    // travels with the file; without it the renderer would rename the project to that file name.
+    const title = projectId ? await this.catalog.title(projectId) : null
+    return {
+      id, name: path.basename(file), size: info.size, projectId, title,
+      recovery: isRecovery || ["recovery", "backup"].includes(mode),
+    }
   }
 
   async read(id) {
