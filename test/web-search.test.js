@@ -419,3 +419,26 @@ test("auto web search falls back to the CORS sources when the desktop bridge thr
   globalThis.khungThoaiDesktop = { webSearch: async () => { throw new Error("bridge exploded") } }
   await assert.rejects(searchWeb("manga", { signal: controller.signal }), { name: "AbortError" })
 })
+
+test("a malformed percent escape in a Wikipedia URL falls back instead of failing the fetch", async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const requested = []
+  globalThis.fetch = async (url) => {
+    requested.push(String(url))
+    return {
+      ok: true,
+      text: async () => "<html><head><title>Trang wiki</title></head><body>Nội dung</body></html>",
+      json: async () => ({ query: { pages: {} } }),
+    }
+  }
+  const { fetchWebPage } = await import("../src/web-search.js")
+
+  // %E0 on its own is not a valid escape: decodeURIComponent used to throw a URIError out of the
+  // whole tool instead of letting the direct request try.
+  const page = await fetchWebPage("https://vi.wikipedia.org/wiki/%E0")
+  assert.equal(page.title, "Trang wiki")
+  assert.match(page.text, /Nội dung/)
+  assert.equal(requested.length, 1, "the API call is skipped, not repeated")
+  assert.equal(requested[0], "https://vi.wikipedia.org/wiki/%E0")
+})

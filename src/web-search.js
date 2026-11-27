@@ -338,26 +338,35 @@ export async function fetchWebPage(rawUrl, { maxChars = 8000, signal } = {}) {
   // On Web browser, use Wikipedia REST/Action API with origin=* for Wikipedia links.
   const wikiMatch = /^https:\/\/([a-z-]+)\.wikipedia\.org\/wiki\/(.+)$/i.exec(safe)
   if (wikiMatch) {
-    const lang = wikiMatch[1]
-    const title = decodeURIComponent(wikiMatch[2].split("#")[0])
-    const apiUrl =
-      `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1` +
-      `&titles=${encodeURIComponent(title)}&format=json&origin=*`
-    const response = await fetch(apiUrl, {
-      credentials: "omit",
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000),
-    })
-    if (response.ok) {
-      const data = await response.json()
-      const pages = Object.values(data?.query?.pages ?? {})
-      const extract = pages[0]?.extract ?? ""
-      if (extract) {
-        return {
-          url: safe,
-          title: pages[0].title || title,
-          text: extract.length > maxChars ? extract.slice(0, maxChars) + "\n…(đã rút gọn)" : extract,
+    try {
+      const lang = wikiMatch[1]
+      // A URL the model assembled by hand can carry a broken percent escape (%E0 on its own), and
+      // decodeURIComponent throws a URIError on it. That is a bad guess about a title, not a reason
+      // to fail the whole fetch: fall through to the direct request below.
+      const title = decodeURIComponent(wikiMatch[2].split("#")[0])
+      const apiUrl =
+        `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1` +
+        `&titles=${encodeURIComponent(title)}&format=json&origin=*`
+      const response = await fetch(apiUrl, {
+        credentials: "omit",
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        const pages = Object.values(data?.query?.pages ?? {})
+        const extract = pages[0]?.extract ?? ""
+        if (extract) {
+          return {
+            url: safe,
+            title: pages[0].title || title,
+            text: extract.length > maxChars ? extract.slice(0, maxChars) + "\n…(đã rút gọn)" : extract,
+          }
         }
       }
+    } catch (error) {
+      // A cancelled turn keeps its cancellation; everything else is the API path failing and the
+      // direct fetch below getting its chance.
+      if (signal?.aborted) throw error
     }
   }
 
