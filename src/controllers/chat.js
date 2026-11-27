@@ -930,6 +930,10 @@ export function setupChat({
 
     const cmd = parseSlashCommand(trimmed)
     if (cmd) {
+      if (cmd.kind === "usage") {
+        renderSystemNotice(cmd.text)
+        return true
+      }
       if (cmd.kind === "help") {
         renderSystemNotice(cmd.text)
         return true

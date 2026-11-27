@@ -19,6 +19,11 @@ export function parseSlashCommand(input) {
   if (!match) return null
   const name = match[1].toLowerCase()
   const arg = (match[2] || "").trim()
+  // A flag is only the first word: `/plan off now` is a typo for `/plan off`, not a request to turn
+  // Plan Mode on with the prompt "off now". Leftover words after a flag are refused with the syntax
+  // instead of being guessed at.
+  const [flag = "", ...rest] = arg ? arg.split(/\s+/) : []
+  const extra = rest.join(" ")
 
   if (name === "help" || name === "?") {
     return { kind: "help", text: SLASH_COMMANDS_HELP }
@@ -27,10 +32,17 @@ export function parseSlashCommand(input) {
     return { kind: "clear" }
   }
   if (name === "compact") {
-    return { kind: "compact", useLlm: arg.toLowerCase() === "ai" || arg.toLowerCase() === "llm" }
+    const mode = flag.toLowerCase()
+    if (!arg) return { kind: "compact", useLlm: false }
+    if ((mode === "ai" || mode === "llm") && !extra) return { kind: "compact", useLlm: true }
+    return { kind: "usage", text: "Cú pháp: `/compact` hoặc `/compact ai` (nhờ LLM viết tóm tắt)." }
   }
   if (name === "plan") {
-    if (arg.toLowerCase() === "off") return { kind: "plan", enabled: false }
+    if (flag.toLowerCase() === "off") {
+      return extra
+        ? { kind: "usage", text: "Cú pháp: `/plan` (bật), `/plan off` (tắt) hoặc `/plan <yêu cầu>` (bật và chạy ngay)." }
+        : { kind: "plan", enabled: false }
+    }
     if (!arg) return { kind: "plan", enabled: true }
     return { kind: "plan", enabled: true, prompt: arg }
   }
