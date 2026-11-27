@@ -130,8 +130,13 @@ export function saveFile(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 30000)
 }
 
+// Only a real file extension is dropped. A chapter title such as
+// "One Piece - Chương 1.5 - Part 2" ends in a number, not an extension, and cutting at the last dot
+// there lost the part that tells two chapters of the same series apart.
+const knownExtension = /\.(png|jpe?g|webp|json|txt|docx|xlsx|zip|khungthoai)$/i
+
 export function filenameStem(name) {
-  return name.replace(/\.[^.]+$/, "").replace(/[\u0000-\u001f<>:"/\\|?*]/g, "_").slice(0, 120) || "trang"
+  return name.replace(knownExtension, "").replace(/[\u0000-\u001f<>:"/\\|?*]/g, "_").slice(0, 120) || "trang"
 }
 
 export function normalizedSearch(value) {

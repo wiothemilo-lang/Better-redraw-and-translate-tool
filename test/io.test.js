@@ -99,3 +99,27 @@ test("readDialogueFile falls back to plain rows for headerless sparse XLSX", asy
   const text = await readDialogueFile(await xlsxFile(sheet))
   assert.equal(text, "Một ba\nchỉ cột C")
 })
+
+test("filenameStem strips a real file extension and keeps dots inside a title", async () => {
+  const { filenameStem } = await import("../src/io.js")
+
+  // The repro: a chapter titled with a decimal number used to lose " - Part 2" and its own number.
+  assert.equal(filenameStem("One Piece - Chương 1.5 - Part 2"), "One Piece - Chương 1.5 - Part 2")
+  assert.equal(filenameStem("Chương 12.5"), "Chương 12.5")
+
+  // Formats the app itself works with still lose their extension.
+  assert.equal(filenameStem("01.png"), "01")
+  assert.equal(filenameStem("trang-02.JPEG"), "trang-02")
+  assert.equal(filenameStem("page.webp"), "page")
+  assert.equal(filenameStem("kich-ban.docx"), "kich-ban")
+  assert.equal(filenameStem("bang-thuat-ngu.xlsx"), "bang-thuat-ngu")
+  assert.equal(filenameStem("catalog.json"), "catalog")
+  assert.equal(filenameStem("chapter.khungthoai"), "chapter")
+  assert.equal(filenameStem("Bản dịch.zip"), "Bản dịch")
+
+  // Reserved characters become underscores, and an empty name still yields a usable stem.
+  assert.equal(filenameStem('a/b:c*d?.png'), "a_b_c_d_")
+  assert.equal(filenameStem(""), "trang")
+  // A name that is nothing but an extension falls back to the generic stem.
+  assert.equal(filenameStem(".png"), "trang")
+})
