@@ -204,7 +204,7 @@ export function createAgentTools({
             items: { type: "string" },
             description: "Danh sách tối đa 5 từ khóa cần tra song song trong một lượt.",
           },
-          limit: { type: "integer", description: "Số kết quả tối đa (1-8, mặc định 5)." },
+          limit: { type: "integer", description: "Tổng số kết quả tối đa cho cả lượt gọi (1-8, mặc định 5)." },
         },
       },
       async run(args, { signal }) {
@@ -216,18 +216,22 @@ export function createAgentTools({
         const queries = [...new Set(rawList.map((q) => String(q || "").trim()).filter(Boolean))].slice(0, 5)
         if (!queries.length) throw new Error("Hãy cung cấp query hoặc queries để tìm kiếm.")
 
-        const batches = await Promise.all(queries.map((q) => searchWebFn(q, { ...cfg, limit, signal })))
+        // `limit` is the budget for the whole call, so every query asks for a fair share of it
+        // instead of each one fetching the full amount and the merge silently keeping several
+        // times what the caller asked for.
+        const perQuery = clamp(Math.ceil(limit / queries.length), 1, limit)
+        const batches = await Promise.all(queries.map((q) => searchWebFn(q, { ...cfg, limit: perQuery, signal })))
         const seen = new Set()
         const merged = []
         let provider = "web"
-        for (const batch of batches) {
+        outer: for (const batch of batches) {
           if (batch?.provider) provider = batch.provider
           for (const item of batch?.results ?? []) {
+            if (merged.length >= limit) break outer
             if (!item?.url || seen.has(item.url)) continue
             seen.add(item.url)
             const snippet = truncateSafe(String(item.snippet || "").replace(/\s+/g, " ").trim(), 800)
             merged.push({ ...item, snippet })
-            if (merged.length >= Math.min(10, limit * queries.length)) break
           }
         }
         const sourcesMarkdown = merged.length

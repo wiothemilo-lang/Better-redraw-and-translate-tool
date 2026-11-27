@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { createAgentTools } from "../src/agent-tools.js"
 
-function setup({ pages, selected = 0 } = {}) {
+function setup({ pages, selected = 0, searchWebFn } = {}) {
   const state = {
     pages,
     presets: [],
@@ -28,6 +28,7 @@ function setup({ pages, selected = 0 } = {}) {
     readTranslationSettings: () => ({ source: "Japanese", target: "Vietnamese", glossary: "" }),
     textOverflowsFn: () => false,
     makeBoxFn: (_page, rect, text) => box(`new-${++boxSeq}`, text, rect),
+    ...(searchWebFn && { searchWebFn }),
   })
   return { state, tools }
 }
@@ -150,4 +151,39 @@ test("align_boxes and distribute_boxes name an unknown id instead of reporting s
   const duplicate = await tools.execute("align_boxes", { boxIds: ["b1", "b1"], alignment: "left" }, { allowEdits: true })
   assert.equal(duplicate.ok, false)
   assert.match(duplicate.error, /ít nhất 2 boxId/)
+})
+
+test("web_search spends `limit` as one budget for the whole call", async () => {
+  const asked = []
+  const { tools } = setup({
+    pages: [page("p1", [])],
+    // Honours the limit it is given, exactly like searchWeb()'s providers do.
+    searchWebFn: async (query, { limit }) => {
+      asked.push({ query, limit })
+      return {
+        provider: "mock",
+        results: Array.from({ length: 8 }, (_, index) => ({
+          title: `${query}-${index}`,
+          url: `https://example.org/${query}/${index}`,
+          snippet: "Kết quả",
+        })).slice(0, limit),
+      }
+    },
+  })
+
+  const multi = await tools.execute("web_search", { queries: ["gojo", "sukuna"], limit: 5 }, { allowWebSearch: true })
+  assert.equal(multi.ok, true)
+  assert.equal(multi.data.results.length, 5)
+  // Each query asks for a share of the budget instead of the full amount.
+  assert.deepEqual(asked.map((entry) => entry.limit), [3, 3])
+  // Neither query is starved: both are represented in the five results.
+  assert.deepEqual([...new Set(multi.data.results.map((item) => item.title.split("-")[0]))], ["gojo", "sukuna"])
+
+  const single = await tools.execute("web_search", { query: "gojo", limit: 8 }, { allowWebSearch: true })
+  assert.equal(single.data.results.length, 8)
+  assert.equal(asked.at(-1).limit, 8)
+
+  const many = await tools.execute("web_search", { queries: ["a", "b", "c", "d", "e"], limit: 5 }, { allowWebSearch: true })
+  assert.equal(many.data.results.length, 5)
+  assert.deepEqual(asked.slice(-5).map((entry) => entry.limit), [1, 1, 1, 1, 1])
 })
