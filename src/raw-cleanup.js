@@ -145,10 +145,27 @@ export function cleanRawPixels(rgba, width, height, { strength = 0.7, denoise = 
 let webWorker = null
 let workerSeq = 0
 const workerPending = new Map()
+// A request that is never answered would keep cleanRawPageImage() pending forever, and the caller
+// holds the editor busy until it returns: a killed worker, a message that cannot be deserialized and
+// a worker that simply stops all have to end the wait, so every request carries a deadline.
+export const WORKER_TIMEOUT_MS = 45000
 
-function runCleanRawInWebWorker(rgba, width, height, options) {
+function settlePendingWorkerRequests(value = null) {
+  const pending = [...workerPending.values()]
+  workerPending.clear()
+  for (const settle of pending) settle(value)
+}
+
+function resetWebWorker() {
+  webWorker?.terminate()
+  webWorker = null
+  settlePendingWorkerRequests(null)
+}
+
+export function runCleanRawInWebWorker(rgba, width, height, options, timeoutMs = WORKER_TIMEOUT_MS) {
   if (typeof Worker === "undefined") return Promise.resolve(null)
   return new Promise((resolve) => {
+    let id = null
     try {
       if (!webWorker) {
         webWorker = new Worker(new URL("./image-worker.js", import.meta.url), { type: "module" })
@@ -159,21 +176,33 @@ function runCleanRawInWebWorker(rgba, width, height, options) {
           workerPending.delete(id)
           cb(ok && data ? { data: new Uint8ClampedArray(data), ...meta } : null)
         })
-        webWorker.addEventListener("error", () => {
-          for (const cb of workerPending.values()) cb(null)
-          workerPending.clear()
-          webWorker?.terminate()
-          webWorker = null
-        })
+        // Both events mean this worker will never answer: "messageerror" is a message that could not
+        // be deserialized, and "error" is the worker script itself failing. Either way the pending
+        // callers are released and the worker is dropped instead of being reused half-broken.
+        webWorker.addEventListener("error", () => resetWebWorker())
+        webWorker.addEventListener("messageerror", () => resetWebWorker())
       }
-      const id = ++workerSeq
+      id = ++workerSeq
       const copy = new Uint8ClampedArray(rgba)
-      workerPending.set(id, resolve)
+      const timer = setTimeout(() => {
+        if (!workerPending.delete(id)) return
+        // The worker is wedged; the next page starts from a fresh one instead of queueing behind it.
+        resetWebWorker()
+        resolve(null)
+      }, timeoutMs)
+      workerPending.set(id, (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      })
       webWorker.postMessage(
         { id, operation: "clean_raw", width, height, options, rgba: copy.buffer },
         [copy.buffer],
       )
     } catch {
+      // postMessage itself can throw (a transfer that cannot be serialized); the request was already
+      // registered, so it has to be released here rather than left in the map forever.
+      if (id !== null) workerPending.delete(id)
+      resetWebWorker()
       resolve(null)
     }
   })
