@@ -162,7 +162,7 @@ async function createHarness({ prepareStorage, pages = [] } = {}) {
   const notifications = []
   const state = { pages, projectId: "project-1" }
   const { setupChat } = await import("../src/controllers/chat.js")
-  setupChat({
+  const chat = setupChat({
     state,
     byId,
     checkpoint(snapshot, meta) { checkpoints.push({ snapshot, meta }) },
@@ -191,6 +191,7 @@ async function createHarness({ prepareStorage, pages = [] } = {}) {
 
   return {
     byId,
+    chat,
     chips,
     checkpoints,
     document: globalThis.document,
@@ -832,4 +833,38 @@ test("a project switch during a turn keeps the transcript in the project the tur
   assert.ok(started.length >= 2, "the turn lands in the project it started in")
   assert.equal(started.at(-1).text, "Đã đọc trang 1.")
   assert.deepEqual(loadProjectChatSession("project-2").history, [], "nothing leaks into the project the user opened")
+})
+
+test("a project opened mid-turn gets its own chat back when the turn ends (#review)", async () => {
+  const { loadProjectChatSession, saveProjectChatSession } = await import("../src/chat-storage.js")
+  const harness = await createHarness()
+  // A project that already has a chat of its own, loaded the way the editor loads one.
+  saveProjectChatSession("project-1", { history: [{ role: "user", text: "Câu cũ của dự án 1" }], todos: [] })
+  harness.chat.syncProjectSession()
+  assert.match(textOf(harness.byId("chat-messages")), /Câu cũ của dự án 1/)
+
+  const stream = streamingResponse()
+  harness.setFetch(() => stream.response())
+  harness.submit("Đọc trang 1")
+  await drain()
+
+  // The editor opens project 2 while the answer is still streaming, exactly like main.js does.
+  harness.state.projectId = "project-2"
+  harness.chat.syncProjectSession()
+  stream.send("Đã đọc trang 1.")
+  stream.close()
+  await drain()
+
+  // Project 1 keeps the whole exchange, and the panel stops showing it under project 2.
+  assert.equal(loadProjectChatSession("project-1").history.at(-1).text, "Đã đọc trang 1.")
+  assert.doesNotMatch(textOf(harness.byId("chat-messages")), /Đọc trang 1/)
+
+  // The next prompt in project 2 starts from that project's own chat, not from project 1's.
+  harness.setFetch(() => geminiText("Trả lời của dự án 2"))
+  harness.submit("Câu hỏi mới")
+  await drain()
+  assert.deepEqual(
+    loadProjectChatSession("project-2").history.map((message) => message.text),
+    ["Câu hỏi mới", "Trả lời của dự án 2"],
+  )
 })

@@ -552,6 +552,8 @@ export function setupChat({
   // The project a running turn started in. A turn outlives a project switch, so its transcript has
   // to keep landing in the project it began in instead of the one the user just opened.
   let turnProjectId = null
+  // Set when the editor opened another project while a turn was still running.
+  let sessionSyncPending = false
   const turnProject = () => turnProjectId ?? state.projectId
   const saveTurnSession = (fields) => {
     const id = turnProject()
@@ -772,7 +774,14 @@ export function setupChat({
   }
 
   function syncProjectSession() {
-    if (activeController) return
+    if (activeController) {
+      // The turn that is running belongs to the project the user just left and keeps writing
+      // there. Adopting the new transcript now would show one project's chat under another's name
+      // and feed it into the next prompt, so the switch waits for the turn to flush.
+      sessionSyncPending = true
+      return
+    }
+    sessionSyncPending = false
     const saved = loadProjectChatSession(state.projectId)
     chatHistory = saved.history
     rejectionLog = loadProjectRejections(state.projectId)
@@ -1234,11 +1243,16 @@ export function setupChat({
     } finally {
       turnBeforeSnapshot = null
       turnCheckpointRecorded = false
+      const startedIn = turnProjectId
       turnProjectId = null
       tools.endReview?.()
       activeController = null
       activeTurnEl = null
       syncBusyControls()
+      // The user may have opened another project mid-turn. This turn's transcript is already saved
+      // under the project it started in, so the panel can pick up the one they are looking at now
+      // instead of handing it the previous project's history on the next prompt.
+      if (sessionSyncPending || (startedIn && startedIn !== state.projectId)) syncProjectSession()
       followTail()
       if (!panel.hidden && panelHasFocus()) input.focus()
       onTurnEnd?.(settled)
