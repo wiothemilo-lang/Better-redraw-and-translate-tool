@@ -12,8 +12,18 @@ export const controllerDirectory = "src/controllers"
 // fails CI instead of silently shrinking the report.
 export const CONTROLLER_LINE_FLOOR = 25
 
+// fileURLToPath refuses a POSIX-style file URL on Windows ("File URL path must be absolute"),
+// and a coverage report can be produced anywhere, so the pathname is the fallback there.
+function fromFileUrl(value) {
+  try {
+    return fileURLToPath(value)
+  } catch {
+    return decodeURIComponent(new URL(value).pathname)
+  }
+}
+
 export function normalizeSourcePath(file, rootDirectory = root) {
-  const absolute = file.startsWith("file://") ? fileURLToPath(file) : file
+  const absolute = file.startsWith("file://") ? fromFileUrl(file) : file
   const normalized = absolute.replaceAll("\\", "/")
   const rootPrefix = rootDirectory.replaceAll("\\", "/").replace(/\/+$/, "") + "/"
   const relative = normalized.startsWith(rootPrefix) ? normalized.slice(rootPrefix.length) : normalized

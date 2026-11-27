@@ -20,6 +20,9 @@ import {
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const EPOCH = 1700000000
+// The portable .tar.gz is a Linux artifact: it is built with GNU tar, and the checks below inspect
+// it through GNU stat and a POSIX shell. Skipping elsewhere is honest about where the pipeline runs.
+const gnuTools = process.platform === "linux" ? undefined : "The .tar.gz pipeline needs GNU tar and GNU stat."
 
 test("normalizeSourceDateEpoch accepts positive integers and rejects junk", () => {
   assert.equal(normalizeSourceDateEpoch("1700000000"), EPOCH)
@@ -37,7 +40,7 @@ test("resolveSourceDateEpoch prefers SOURCE_DATE_EPOCH and falls back to git HEA
   assert.throws(() => resolveSourceDateEpoch({ env: {}, rootDir: "/nonexistent" }), /SOURCE_DATE_EPOCH/)
 })
 
-test("normalizeTreeTimestamps pins every file, directory and symlink to the epoch", (t) => {
+test("normalizeTreeTimestamps pins every file, directory and symlink to the epoch", { skip: gnuTools }, (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), "khung-thoai-mtime-"))
   t.after(() => spawnSync("rm", ["-rf", dir]))
   mkdirSync(path.join(dir, "sub", "deep"), { recursive: true })
@@ -78,7 +81,7 @@ function packTarball(stageDir, folderName, epoch) {
   return archive + ".gz"
 }
 
-test("two tar.gz builds from identical trees with different mtimes are byte-identical", (t) => {
+test("two tar.gz builds from identical trees with different mtimes are byte-identical", { skip: gnuTools }, (t) => {
   const base = mkdtempSync(path.join(tmpdir(), "khung-thoai-tar-"))
   t.after(() => spawnSync("rm", ["-rf", base]))
   const digests = []

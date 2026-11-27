@@ -1,0 +1,23 @@
+# Check sources out with LF on every platform, so a source scan in a test reads the same file it
+# reads on Linux, and the packaged .tar.gz stays byte-identical wherever it is built.
+* text=auto eol=lf
+
+# Windows launchers need CRLF to be runnable from cmd.exe.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets must never be converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.gz binary
+*.khungthoai binary
