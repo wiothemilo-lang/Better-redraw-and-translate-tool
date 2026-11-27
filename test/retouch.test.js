@@ -98,3 +98,56 @@ test("paintRetouchStrokes renders paint and clone strokes, caches layer, and inv
   assert.equal(destBlits, 4)
   assert.ok(createdCanvases > canvasesAfterEdit)
 })
+
+test("an inpainted patch is written opaquely so no rim of the old letters survives", async (t) => {
+  const originalDocument = globalThis.document
+  // Canvas 1 is the retouch layer, 2 the stroke mask, 3 the inpainted patch.
+  let created = 0
+  let written = null
+  const maskAlpha = Array.from({ length: 64 }, (_, i) => (i < 16 || i >= 48 ? 0 : [255, 96, 8][i % 3]))
+  globalThis.document = {
+    createElement() {
+      created++
+      const index = created
+      const canvas = { width: 0, height: 0 }
+      const context = {
+        canvas,
+        save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        drawImage() {},
+        getImageData: () => {
+          if (index === 2) {
+            const data = new Uint8ClampedArray(64 * 4)
+            // A thick black letter: the mask only decides where the patch is opaque.
+            for (let i = 0; i < 64; i++) data.fill(0, i * 4, i * 4 + 4)
+            for (let i = 0; i < 64; i++) data[i * 4 + 3] = maskAlpha[i]
+            return { data }
+          }
+          const data = new Uint8ClampedArray(64 * 4).fill(255)
+          return { data }
+        },
+        putImageData: (imageData) => { written = imageData.data },
+      }
+      canvas.getContext = () => context
+      return canvas
+    },
+  }
+  t.after(() => { globalThis.document = originalDocument })
+
+  const target = { width: 8, height: 8, getContext: () => ({ drawImage() {} }) }
+  const page = {
+    image: { naturalWidth: 8, naturalHeight: 8 },
+    retouchStrokes: [{ mode: "inpaint", size: .5, points: [{ x: .5, y: .5 }] }],
+  }
+  assert.equal(paintRetouchStrokes(target, page), true)
+  assert.ok(written, "the patch has to be written back to its canvas")
+
+  // Covered pixels are fully opaque: a fractional alpha would blend the cleaned area with the old
+  // letters underneath, which is the halo this guards against.
+  for (let i = 0; i < 64; i++) {
+    assert.equal(written[i * 4 + 3], maskAlpha[i] > 0 ? 255 : 0, `pixel ${i} with mask ${maskAlpha[i]}`)
+  }
+  // Including the antialiased edge the old 32-alpha threshold dropped entirely.
+  const edge = maskAlpha.findIndex((alpha) => alpha === 8)
+  assert.ok(edge >= 0)
+  assert.equal(written[edge * 4 + 3], 255)
+})

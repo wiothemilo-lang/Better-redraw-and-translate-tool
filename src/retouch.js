@@ -220,7 +220,9 @@ function renderRetouchStrokes(context, page, width, height) {
       const maskRgba = maskCtx.getImageData(0, 0, bw, bh).data
       const mask = new Uint8Array(bw * bh)
       for (let i = 0; i < mask.length; i++) {
-        if (maskRgba[i * 4 + 3] >= 32) mask[i] = 1
+        // Any coverage counts. An antialiased edge pixel left outside the mask keeps the old ink and
+        // reads as a dark rim around the area the user cleaned.
+        if (maskRgba[i * 4 + 3] > 0) mask[i] = 1
       }
 
       const patchCanvas = document.createElement("canvas")
@@ -232,7 +234,9 @@ function renderRetouchStrokes(context, page, width, height) {
       const imageData = patchCtx.getImageData(0, 0, bw, bh)
       if (!inpaintRegion(imageData.data, bw, bh, mask)) continue
       for (let i = 0; i < mask.length; i++) {
-        imageData.data[i * 4 + 3] = mask[i] ? maskRgba[i * 4 + 3] : 0
+        // The patch replaces the letters, so it is written opaque: reusing the mask's fractional
+        // alpha blended the old text back in (0.5 inpainted + 0.5 letter) and left the halo.
+        imageData.data[i * 4 + 3] = mask[i] ? 255 : 0
       }
       patchCtx.putImageData(imageData, 0, 0)
       context.save()
@@ -307,7 +311,7 @@ async function buildNativeInpaintPatch(page, stroke) {
   const mask = new Uint8Array(bw * bh)
   let any = false
   for (let i = 0; i < mask.length; i++) {
-    if (maskRgba[i * 4 + 3] >= 32) {
+    if (maskRgba[i * 4 + 3] > 0) {
       mask[i] = 1
       any = true
     }
@@ -327,8 +331,10 @@ async function buildNativeInpaintPatch(page, stroke) {
   const response = await desktop.native("inpaint", { width: bw, height: bh, patchRadius: 3, colorAdapt: true }, payload)
   const out = new Uint8ClampedArray(response.data)
   if (out.length !== rgba.length) return null
+  // Opaque inside the stroke, nothing outside it: a fractional mask alpha would blend the clean
+  // patch with the letters it is meant to erase.
   for (let i = 0; i < mask.length; i++) {
-    out[i * 4 + 3] = mask[i] ? maskRgba[i * 4 + 3] : 0
+    out[i * 4 + 3] = mask[i] ? 255 : 0
   }
   patchCtx.putImageData(new ImageData(out, bw, bh), 0, 0)
   return { canvas: patchCanvas, left, top, width, height }
@@ -391,7 +397,7 @@ async function buildNativeSeamlessClonePatch(page, stroke, bridge) {
   const mask = new Uint8Array(bw * bh)
   let any = false
   for (let i = 0; i < mask.length; i++) {
-    if (maskRgba[i * 4 + 3] >= 32) {
+    if (maskRgba[i * 4 + 3] > 0) {
       mask[i] = 1
       any = true
     }
@@ -420,8 +426,9 @@ async function buildNativeSeamlessClonePatch(page, stroke, bridge) {
   const response = await bridge.native("seamless_clone", { width: bw, height: bh }, payload)
   const out = new Uint8ClampedArray(response.data)
   if (out.length !== dstRgba.length) return null
+  // Same rule as the inpaint patch: the cloned pixels replace what is under the stroke.
   for (let i = 0; i < mask.length; i++) {
-    out[i * 4 + 3] = mask[i] ? maskRgba[i * 4 + 3] : 0
+    out[i * 4 + 3] = mask[i] ? 255 : 0
   }
   dstCtx.putImageData(new ImageData(out, bw, bh), 0, 0)
   return { canvas: dstCanvas, left, top, width, height }
