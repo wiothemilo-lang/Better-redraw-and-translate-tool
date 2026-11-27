@@ -79,6 +79,18 @@ function resolveTargetPages(state, selectedPage, pageIndex) {
   return { pages: [page], offset: state.pages.indexOf(page) }
 }
 
+// alignBoxes/distributeBoxes ignore the ids they cannot find and report "nothing to do", which the
+// tools then read back to the model as a success. An id naming no box is the model's mistake, so it
+// has to be said out loud instead of silently aligning whatever subset happened to exist.
+function resolveBoxIds(page, rawIds) {
+  const ids = [...new Set((Array.isArray(rawIds) ? rawIds : []).map(String))]
+  const missing = ids.filter((id) => !page.boxes.some((box) => box.id === id))
+  if (missing.length) {
+    throw new Error(`Không tìm thấy khung ${missing.join(", ")} trên trang "${page.name}".`)
+  }
+  return ids
+}
+
 function defaultCapturePageImage(page, { box = null, maxDim = 768 } = {}) {
   const img = page?.image
   const natW = img?.naturalWidth ?? 0
@@ -1026,7 +1038,7 @@ export function createAgentTools({
       async run(args) {
         const { page, index } = resolvePage(state, selectedPage, args?.pageIndex)
         if (!page) throw new Error("Không tìm thấy trang cần căn khung.")
-        const ids = Array.isArray(args?.boxIds) ? args.boxIds.map(String) : []
+        const ids = resolveBoxIds(page, args?.boxIds)
         if (ids.length < 2) throw new Error("Cần ít nhất 2 boxId để căn hàng.")
         commitLiveForm?.()
         checkpoint()
@@ -1057,7 +1069,7 @@ export function createAgentTools({
       async run(args) {
         const { page, index } = resolvePage(state, selectedPage, args?.pageIndex)
         if (!page) throw new Error("Không tìm thấy trang cần chia đều.")
-        const ids = Array.isArray(args?.boxIds) ? args.boxIds.map(String) : []
+        const ids = resolveBoxIds(page, args?.boxIds)
         if (ids.length < 3) throw new Error("Cần ít nhất 3 boxId để chia đều khoảng cách.")
         commitLiveForm?.()
         checkpoint()

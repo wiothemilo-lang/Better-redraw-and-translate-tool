@@ -123,3 +123,31 @@ test("update_box and delete_box reach a box that lives on another page", async (
   assert.equal(missing.ok, false)
   assert.match(missing.error, /Không tìm thấy khung thoại/)
 })
+
+test("align_boxes and distribute_boxes name an unknown id instead of reporting success", async () => {
+  const { tools } = setup({
+    pages: [page("p1", [
+      box("b1", "Một", { x: .1, y: .1 }),
+      box("b2", "Hai", { x: .5, y: .3 }),
+      box("b3", "Ba", { x: .8, y: .6 }),
+    ])],
+  })
+
+  const aligned = await tools.execute("align_boxes", { boxIds: ["b1", "missing"], alignment: "left" }, { allowEdits: true })
+  assert.equal(aligned.ok, false)
+  assert.match(aligned.error, /missing/)
+
+  const distributed = await tools.execute("distribute_boxes", { boxIds: ["b1", "b2", "ghost"], axis: "vertical" }, { allowEdits: true })
+  assert.equal(distributed.ok, false)
+  assert.match(distributed.error, /ghost/)
+
+  // The ids that do exist are all processed and counted.
+  const whole = await tools.execute("align_boxes", { boxIds: ["b1", "b2", "b3"], alignment: "left" }, { allowEdits: true })
+  assert.equal(whole.ok, true)
+  assert.equal(whole.data.count, 3)
+
+  // A duplicated id is one box, not two.
+  const duplicate = await tools.execute("align_boxes", { boxIds: ["b1", "b1"], alignment: "left" }, { allowEdits: true })
+  assert.equal(duplicate.ok, false)
+  assert.match(duplicate.error, /ít nhất 2 boxId/)
+})
