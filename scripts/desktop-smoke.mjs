@@ -24,6 +24,11 @@ if (process.platform === "linux" && !process.env.DISPLAY) args.push("--ozone-pla
 if (!packaged) args.push(root)
 const app = await _electron.launch({ executablePath, args, env: environment, timeout: 30000 })
 const errors = []
+// The renderer evaluates its entry script while the window is being created, so a listener attached
+// after firstWindow() resolves would miss exactly the startup exception this test exists to catch.
+app.on("window", (window) => {
+  window.on("pageerror", (error) => errors.push(error.message))
+})
 let page
 async function waitForArtifact(read, description) {
   const deadline = Date.now() + 20000
@@ -37,7 +42,6 @@ async function waitForArtifact(read, description) {
 try {
   page = await app.firstWindow()
   page.setDefaultTimeout(20000)
-  page.on("pageerror", (error) => errors.push(error.message))
   await app.evaluate(({ dialog, session }, directory) => {
     globalThis.downloads = []
     dialog.showSaveDialog = async (_window, options) => ({
