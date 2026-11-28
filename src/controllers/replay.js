@@ -13,6 +13,7 @@ import {
   saveProjectTurnRecord,
 } from "../chat-storage.js"
 import { saveFile } from "../io.js"
+import { formatTokens, formatUsd } from "../token-accounting.js"
 
 export const REPLAY_STATUS_COPY = Object.freeze({
   running: "Đang chạy",
@@ -127,6 +128,20 @@ export function setupReplay({ byId, projectId = () => "", notify = () => {}, wri
     return row
   }
 
+  function renderUsage(usage) {
+    const parts = []
+    if (Number.isFinite(usage.promptTokens)) parts.push(`${formatTokens(usage.promptTokens)} vào`)
+    if (Number.isFinite(usage.outputTokens)) parts.push(`${formatTokens(usage.outputTokens)} ra`)
+    if (Number.isFinite(usage.cachedTokens) && usage.cachedTokens > 0) parts.push(`${formatTokens(usage.cachedTokens)} đệm`)
+    if (!parts.length && Number.isFinite(usage.totalTokens)) parts.push(`${formatTokens(usage.totalTokens)} tổng`)
+    if (Number.isFinite(usage.costUsd)) parts.push(formatUsd(usage.costUsd))
+    if (!parts.length) return null
+    const line = document.createElement("p")
+    line.className = "chat-replay-usage"
+    line.textContent = "Token: " + parts.join(" · ")
+    return line
+  }
+
   function renderStepEntry(entry) {
     const row = document.createElement("div")
     row.className = "chat-replay-step"
@@ -136,6 +151,9 @@ export function setupReplay({ byId, projectId = () => "", notify = () => {}, wri
     const body = document.createElement("p")
     body.textContent = clip(entry.text, 400) || "(model không trả lời bằng văn bản)"
     row.append(title, body)
+    // Providers report per-step counts, but the turn total alone cannot say which step spent them.
+    const usage = entry.usage ? renderUsage(entry.usage) : null
+    if (usage) row.append(usage)
     if (entry.thought) {
       const details = document.createElement("details")
       details.className = "chat-thought"

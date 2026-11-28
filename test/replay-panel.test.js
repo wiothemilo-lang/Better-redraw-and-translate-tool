@@ -69,7 +69,12 @@ function makePanel() {
 function recordFor({ id, approve = "approved", tool = "list_boxes", status = "completed", category = "read" } = {}) {
   const recorder = createTurnRecorder({ id, now: () => 1000 })
   recorder.begin({ provider: "gemini", model: "gemini-3.1-flash-lite", userMessage: "Đọc trang 1" })
-  recorder.step({ step: 1, text: "Đã đọc", toolCalls: [{ name: tool }] })
+  recorder.step({
+    step: 1,
+    text: "Đã đọc",
+    usage: { promptTokens: 1200, outputTokens: 34, cachedTokens: 200 },
+    toolCalls: [{ name: tool }],
+  })
   recorder.tool({
     step: 1,
     entry: {
@@ -140,6 +145,12 @@ test("the replay panel lists recorded turns, replays one offline and highlights 
   list.children[1].children[1].click()
   await new Promise((resolve) => setTimeout(resolve, 0))
   assert.match(trace.children[0].textContent, /turn-a/)
+  // #142 follow-up: a step shows the provider's own counts instead of only the turn total.
+  const usage = byClass(trace, "chat-replay-usage")
+  assert.equal(usage.length, 1)
+  assert.match(usage[0].textContent, /1\.2k vào/)
+  assert.match(usage[0].textContent, /34 ra/)
+  assert.match(usage[0].textContent, /200 đệm/)
 
   // A truncated transcript is shown as a difference, not silently accepted.
   const broken = recordFor({ id: "turn-broken" })
