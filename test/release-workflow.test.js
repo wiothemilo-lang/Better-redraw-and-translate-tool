@@ -47,8 +47,29 @@ test("the release notes take the RPM file name from the artifacts and every name
   // The RPM file name splits a prerelease version (1.2.0-beta.1 => khung-thoai-1.2.0-0.1.beta.1...),
   // so a name rewritten from the tag does not exist on prereleases.
   assert.doesNotMatch(publish, /khung-thoai-\$\{VER\}-1\.x86_64\.rpm/)
-  assert.match(publish, /RPM_FILE=\$\(cd release-assets && ls -1 \*\.rpm \| head -n 1\)/)
+  // A failing `ls` inside $( ) aborts a bash -eo pipefail step before its own guard can explain
+  // what was missing, so the glob is read without the `cd` and its exit code cannot leak.
+  assert.match(publish, /RPM_FILE=\$\(ls release-assets\/\*\.rpm 2>\/dev\/null \| head -n 1 \|\| true\)/)
+  assert.doesNotMatch(publish, /cd release-assets && ls/)
   assert.match(publish, /\| \*\*Fedora Linux \(x64\)\*\* \| \\`\$\{RPM_FILE\}\\` \|/)
   // And the notes are not published until their file names are checked against the assets.
   assert.match(publish, /node scripts\/check-release-notes\.mjs release-notes\.md release-assets/)
+})
+
+test("a missing RPM artifact still prints why the notes were refused (#review)", { skip: process.platform === "win32" ? "The release publish step runs in bash." : undefined }, async () => {
+  // The publish step runs under bash -eo pipefail. Reading the glob through $( ) with a `cd` made a
+  // failing `ls` abort the step before its own guard could say what was missing; this runs the
+  // shape the workflow uses now and checks the message survives.
+  const { spawnSync } = await import("node:child_process")
+  const script = [
+    'RPM_FILE=$(ls /nonexistent-dir/*.rpm 2>/dev/null | head -n 1 || true)',
+    'if [ -z "$RPM_FILE" ]; then',
+    '  echo "No .rpm artifact was uploaded."',
+    '  exit 1',
+    'fi',
+    '',
+  ].join("\n")
+  const result = spawnSync("bash", ["-eo", "pipefail", "-c", script], { encoding: "utf8" })
+  assert.equal(result.status, 1)
+  assert.match(result.stdout + result.stderr, /No \.rpm artifact was uploaded/)
 })

@@ -75,6 +75,9 @@ test("OCR character error handles Unicode and whitespace", () => {
 test("the redraw benchmark times only the native call, not the pixel comparison", async () => {
   // The comparison loop walks the rect pixel by pixel; counting it as latency made large regions
   // look slower on the same worker and skewed the trend in artifacts/benchmark.json.
+  // The script cannot be launched from a test (it needs the Electron renderer and a native worker),
+  // so this pins the one expression that decides what is timed. It is a spelling test on purpose:
+  // renaming the variable means updating this line too.
   const source = await readFile(path.join(root, "scripts/benchmark.mjs"), "utf8")
   const call = source.indexOf('await worker.call("redraw"')
   const stop = source.indexOf("const milliseconds = performance.now() - start")

@@ -374,6 +374,10 @@ test("stripHtmlToText drops hidden subtrees by element, not by the word hidden a
     )
     // "hidden" inside an attribute value is part of a URL, not a reason to delete visible text.
     assert.equal(strip('<a href="/hidden/page">QUAN TRONG</a>'), "QUAN TRONG")
+    // A quoted attribute value that happens to contain the word keeps its text: only an attribute
+    // name can hide an element.
+    assert.equal(strip('<div title="a hidden b">visible</div>'), "visible")
+    assert.equal(strip('<div class="hidden">x</div>'), "x")
     // Void tags and hidden attributes in their own opening tags behave the same way.
     assert.equal(strip('<p>a<br>b</p><img src="/hidden/x.png" alt="hidden"><p>c</p>'), "a\nb\nc")
     // An unclosed hidden block keeps swallowing text: better a missing line than injected instructions.
@@ -464,4 +468,38 @@ test("the web and desktop URL guards refuse the same reserved IPv4 ranges", () =
     )
   }
   assert.equal(isSafePublicHttpsUrl("https://93.184.216.34/x"), "https://93.184.216.34/x")
+})
+
+test("a broken desktop bridge still lets fetchWebPage read the page itself", async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    delete globalThis.khungThoaiDesktop
+  })
+  const requested = []
+  globalThis.fetch = async (url) => {
+    requested.push(String(url))
+    return { ok: true, text: async () => "<html><head><title>Trang thử</title></head><body><p>Nội dung</p></body></html>" }
+  }
+  const { fetchWebPage } = await import("../src/web-search.js")
+
+  // The sibling of the search fallback: one broken IPC call must not cost the page.
+  for (const bridge of [
+    { fetchUrl: async () => { throw new Error("bridge exploded") } },
+    { fetchUrl: () => { throw new Error("no ipc") } },
+  ]) {
+    requested.length = 0
+    globalThis.khungThoaiDesktop = bridge
+    const page = await fetchWebPage("https://example.org/page")
+    assert.equal(page.url, "https://example.org/page")
+    assert.equal(page.title, "Trang thử")
+    assert.match(page.text, /Nội dung/)
+    assert.deepEqual(requested, ["https://example.org/page"])
+  }
+
+  // A cancelled read is not a broken bridge: it still rejects.
+  const controller = new AbortController()
+  controller.abort()
+  globalThis.khungThoaiDesktop = { fetchUrl: async () => { throw new Error("bridge exploded") } }
+  await assert.rejects(fetchWebPage("https://example.org/page", { signal: controller.signal }), { name: "AbortError" })
 })

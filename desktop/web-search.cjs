@@ -170,7 +170,10 @@ const BLOCK_END = new Set(["p", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5",
 // An element is hidden only when its own attributes say so. Searching the tag for the word anywhere
 // also matched a URL such as href="/hidden/page" and deleted text the reader can see.
 function hiddenByAttributes(attributes) {
-  if (/(^|\s)hidden(\s|=|\/|$)/i.test(attributes)) return true
+  // Only an attribute name can hide an element: a quoted value may contain the word itself
+  // (title="a hidden b"), and dropping that text would delete something the reader can see.
+  const bare = attributes.replace(/"[^"]*"|'[^']*'/g, '""')
+  if (/(^|\s)hidden(\s|=|\/|$)/i.test(bare)) return true
   if (/aria-hidden\s*=\s*["']?true["']?/i.test(attributes)) return true
   return /style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^"']*["']/i.test(attributes)
 }

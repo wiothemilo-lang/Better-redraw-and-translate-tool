@@ -512,10 +512,7 @@ export function createAgentTools({
         // alone, because none of its boxes are in the project yet.
         if (!draft && page.id !== state.pageId) {
           if (selectPage) selectPage(page)
-          else {
-            state.pageId = page.id
-            state.selectedBoxIds?.clear()
-          }
+          else state.pageId = page.id
         }
         state.boxId = box.id
         state.selectedBoxIds?.clear()

@@ -825,6 +825,12 @@ test("a project switch during a turn keeps the transcript in the project the tur
 
   // The user opens another project while the answer is still streaming.
   harness.state.projectId = "project-2"
+  harness.chat.syncProjectSession()
+  // The rows above still belong to the first project: the panel says so instead of letting the new
+  // project's header sit over a conversation that belongs to the other one.
+  const notice = byClass(harness.byId("chat-messages"), "chat-msg system").at(-1)
+  // The notice is written as text nodes, so the collector reads them, not textContent.
+  assert.match(textOf(notice), /thuộc dự án vừa rời/)
   stream.send("Đã đọc trang 1.")
   stream.close()
   await drain()

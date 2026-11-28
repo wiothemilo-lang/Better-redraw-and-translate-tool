@@ -239,7 +239,9 @@ jobs:
           # An RPM filename splits a prerelease version into version and release (1.2.0-beta.1 becomes
           # khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm), so the name in the notes is read from the
           # artifacts themselves instead of being spelled out from the tag.
-          RPM_FILE=$(cd release-assets && ls -1 *.rpm | head -n 1)
+          # The `|| true` matters: under `set -eo pipefail` a failing `ls` would abort this step
+          # before the guard below could say what was missing.
+          RPM_FILE=$(ls release-assets/*.rpm 2>/dev/null | head -n 1 || true)
           if [ -z "$RPM_FILE" ]; then
             echo "No .rpm artifact was uploaded; refusing to write release notes that point at nothing."
             exit 1

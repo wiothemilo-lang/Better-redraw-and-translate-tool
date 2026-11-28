@@ -9,6 +9,9 @@ const root = fileURLToPath(new URL("..", import.meta.url))
 test("the desktop smoke test listens for renderer errors before the first window loads", async () => {
   // The renderer runs its entry script while the window is created, so a pageerror recorded only
   // after firstWindow() resolves would be the one this test exists to catch.
+  // The smoke script needs Electron, so the order of its own lines is what gets asserted: a
+  // listener registered after firstWindow() is exactly the bug, and moving the code means updating
+  // this test with it.
   const source = await readFile(path.join(root, "scripts/desktop-smoke.mjs"), "utf8")
   const launch = source.indexOf("await _electron.launch(")
   const listen = source.indexOf('app.on("window"')

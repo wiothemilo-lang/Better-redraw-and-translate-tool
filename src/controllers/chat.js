@@ -779,6 +779,11 @@ export function setupChat({
       // there. Adopting the new transcript now would show one project's chat under another's name
       // and feed it into the next prompt, so the switch waits for the turn to flush.
       sessionSyncPending = true
+      // The rows above belong to the project the turn started in. Saying so beats leaving this
+      // project's header over another project's conversation until the turn flushes.
+      renderSystemNotice(
+        "Lượt AI đang chạy thuộc dự án vừa rời. Hội thoại của dự án này hiện ra khi lượt đó xong.",
+      )
       return
     }
     sessionSyncPending = false
