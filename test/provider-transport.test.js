@@ -668,7 +668,7 @@ test("headers are built in main and a keyless destination carries none", () => {
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
     "Accept-Encoding": "identity",
-    "User-Agent": "KhungThoai/1.0 (Manga Editor Provider Transport)",
+    "User-Agent": "Nixio/1.0 (Manga Editor Provider Transport)",
     "x-goog-api-key": GEMINI_KEY,
   })
   const openai = openAiDestination("https://api.example.com/v1")

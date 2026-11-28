@@ -119,7 +119,7 @@ export function serializePresetsJson(presets) {
   return JSON.stringify(
     {
       version: 1,
-      app: "khung-thoai",
+      app: "nixio",
       exportedAt: new Date().toISOString(),
       presets: clean,
     },

@@ -54,7 +54,7 @@ export async function verifyReleaseReproducible({
   const diff = diffArtifactSets(runs[0].artifacts, runs[1].artifacts)
   const manifest = await buildInputManifest({ version: resolvedVersion, sourceDateEpoch: epoch })
   const report = {
-    format: "khung-thoai-reproducibility-report",
+    format: "nixio-reproducibility-report",
     formatVersion: 1,
     rid,
     appVersion: resolvedVersion,

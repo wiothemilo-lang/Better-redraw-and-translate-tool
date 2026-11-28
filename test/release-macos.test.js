@@ -29,7 +29,7 @@ test("macOS packaging ships a .app, a .dmg, and a .zip for both architectures", 
     appBundleId: MAC_BUNDLE_ID,
     appCategoryType: "public.app-category.graphics-design",
   })
-  assert.equal(MAC_APP_BUNDLE, "Khung-Thoai.app")
+  assert.equal(MAC_APP_BUNDLE, "Nixio.app")
 })
 
 test("the osx RID maps onto packager's darwin output alongside linux and win", () => {
@@ -64,8 +64,8 @@ test("the hardened runtime entitlements match the committed plists", () => {
 
 test("notarisation reads credentials from the environment and fails in Vietnamese when they are missing", () => {
   assert.deepEqual(
-    macSigningConfig({ CODESIGN_IDENTITY: "Developer ID Application: Khung Thoai (ABCDE12345)", MAC_NOTARIZE: "1" }),
-    { identity: "Developer ID Application: Khung Thoai (ABCDE12345)", notarize: true },
+    macSigningConfig({ CODESIGN_IDENTITY: "Developer ID Application: Nixio (ABCDE12345)", MAC_NOTARIZE: "1" }),
+    { identity: "Developer ID Application: Nixio (ABCDE12345)", notarize: true },
   )
   assert.deepEqual(macSigningConfig({}), { identity: "", notarize: false })
   assert.throws(
@@ -73,7 +73,7 @@ test("notarisation reads credentials from the environment and fails in Vietnames
     /Không thể notarise bản macOS khi chưa đặt CODESIGN_IDENTITY/,
   )
 
-  const target = "/tmp/Khung-Thoai.app"
+  const target = "/tmp/Nixio.app"
   assert.throws(
     () => buildMacNotarytoolArgs({ target, env: {} }),
     /Thiếu thông tin xác thực notarisation \(APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID\)/,
@@ -106,23 +106,23 @@ test("notarisation reads credentials from the environment and fails in Vietnames
   )
 })
 
-test("artifact names follow the Khung-Thoai-<version>-mac-<arch> convention", () => {
+test("artifact names follow the Nixio-<version>-mac-<arch> convention", () => {
   assert.deepEqual(macArtifactNames({ version: "1.3.0", arch: "arm64" }), {
-    app: "Khung-Thoai.app",
-    dmg: "Khung-Thoai-1.3.0-mac-arm64.dmg",
-    zip: "Khung-Thoai-1.3.0-mac-arm64.zip",
+    app: "Nixio.app",
+    dmg: "Nixio-1.3.0-mac-arm64.dmg",
+    zip: "Nixio-1.3.0-mac-arm64.zip",
   })
   assert.deepEqual(macArtifactNames({ version: "v1.4.0-beta.2", arch: "x64" }), {
-    app: "Khung-Thoai.app",
-    dmg: "Khung-Thoai-1.4.0-beta.2-mac-x64.dmg",
-    zip: "Khung-Thoai-1.4.0-beta.2-mac-x64.zip",
+    app: "Nixio.app",
+    dmg: "Nixio-1.4.0-beta.2-mac-x64.dmg",
+    zip: "Nixio-1.4.0-beta.2-mac-x64.zip",
   })
   assert.throws(() => macArtifactNames({ version: "latest", arch: "arm64" }), /Invalid release version/)
 })
 
 test("codesign, dmg, and zip commands target the bundle with hardened runtime and entitlements", () => {
   assert.deepEqual(
-    buildMacCodesignArgs({ identity: "Developer ID Application: X", target: "/tmp/Khung-Thoai.app", entitlements: "/tmp/entitlements.mac.plist" }),
+    buildMacCodesignArgs({ identity: "Developer ID Application: X", target: "/tmp/Nixio.app", entitlements: "/tmp/entitlements.mac.plist" }),
     [
       "--force",
       "--timestamp",
@@ -132,25 +132,25 @@ test("codesign, dmg, and zip commands target the bundle with hardened runtime an
       "/tmp/entitlements.mac.plist",
       "--sign",
       "Developer ID Application: X",
-      "/tmp/Khung-Thoai.app",
+      "/tmp/Nixio.app",
     ],
   )
   assert.deepEqual(
-    buildMacDmgArgs({ appPath: "/tmp/Khung-Thoai.app", outputFile: "/tmp/release/Khung-Thoai-1.3.0-mac-arm64.dmg" }),
+    buildMacDmgArgs({ appPath: "/tmp/Nixio.app", outputFile: "/tmp/release/Nixio-1.3.0-mac-arm64.dmg" }),
     [
       "create",
       "-volname",
-      "Khung Thoại",
+      "Nixio",
       "-srcfolder",
-      "/tmp/Khung-Thoai.app",
+      "/tmp/Nixio.app",
       "-ov",
       "-format",
       "UDZO",
-      "/tmp/release/Khung-Thoai-1.3.0-mac-arm64.dmg",
+      "/tmp/release/Nixio-1.3.0-mac-arm64.dmg",
     ],
   )
   assert.deepEqual(
-    buildMacZipArgs({ appPath: "/tmp/Khung-Thoai.app", outputFile: "/tmp/release/Khung-Thoai-1.3.0-mac-arm64.zip" }),
-    ["-c", "-k", "--sequesterRsrc", "--keepParent", "/tmp/Khung-Thoai.app", "/tmp/release/Khung-Thoai-1.3.0-mac-arm64.zip"],
+    buildMacZipArgs({ appPath: "/tmp/Nixio.app", outputFile: "/tmp/release/Nixio-1.3.0-mac-arm64.zip" }),
+    ["-c", "-k", "--sequesterRsrc", "--keepParent", "/tmp/Nixio.app", "/tmp/release/Nixio-1.3.0-mac-arm64.zip"],
   )
 })

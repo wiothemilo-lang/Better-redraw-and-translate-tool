@@ -33,7 +33,7 @@ class ProjectFiles {
     } else if (mode === "recovery" || mode === "backup") file = this.recovery + (mode === "backup" ? ".bak" : "")
     else {
       const selection = await this.dialog.showOpenDialog(this.window(), {
-        filters: [{ name: "Khung Thoại", extensions: ["khungthoai"] }], properties: ["openFile"],
+        filters: [{ name: "Nixio", extensions: ["khungthoai"] }], properties: ["openFile"],
       })
       if (selection.canceled) return null
       file = selection.filePaths[0]
@@ -65,12 +65,12 @@ class ProjectFiles {
 
   async begin(mode, name, projectId = this.activeId) {
     if (!validId(projectId)) throw new Error("Mã dự án không hợp lệ.")
-    const title = String(name || "Khung Thoại").replace(/\.khungthoai$/i, "")
+    const title = String(name || "Nixio").replace(/\.khungthoai$/i, "")
     let file = mode === "autosave" ? await this.catalog.prepare(projectId) : null
     if (!file) {
       const selection = await this.dialog.showSaveDialog(this.window(), {
-        defaultPath: mode === "project" && this.projectPath ? this.projectPath : path.basename(String(name || "khung-thoai.khungthoai")),
-        filters: [{ name: mode === "zip" ? "ZIP PNG" : "Khung Thoại", extensions: [mode === "zip" ? "zip" : "khungthoai"] }],
+        defaultPath: mode === "project" && this.projectPath ? this.projectPath : path.basename(String(name || "nixio.khungthoai")),
+        filters: [{ name: mode === "zip" ? "ZIP PNG" : "Nixio", extensions: [mode === "zip" ? "zip" : "khungthoai"] }],
       })
       if (selection.canceled) return null
       file = selection.filePath

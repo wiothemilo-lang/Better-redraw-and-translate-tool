@@ -420,7 +420,7 @@ export function exportManifest({ profile, plans }) {
     || (left.file < right.file ? -1 : left.file > right.file ? 1 : 0))
   return {
     version: 1,
-    app: "khung-thoai",
+    app: "nixio",
     profile: {
       id: clean.id,
       name: clean.name,

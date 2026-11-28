@@ -81,7 +81,7 @@ const MAX_EARLY_BYTES = 512 * 1024
 // acknowledges late still learns why. The table is FIFO and small, so it cannot grow with traffic.
 const MAX_FINISHED_TICKETS = 16
 const REDACTED = "[redacted]"
-const USER_AGENT = "KhungThoai/1.0 (Manga Editor Provider Transport)"
+const USER_AGENT = "Nixio/1.0 (Manga Editor Provider Transport)"
 
 const PROVIDER_CODES = Object.freeze({
   UNTRUSTED: "ERR_PROVIDER_UNTRUSTED",

@@ -41,12 +41,12 @@ test("normalizeReleasePayload sanitizes non-GitHub URLs and detects update", () 
   const result = normalizeReleasePayload(
     {
       tag_name: "v1.3.0",
-      name: "Khung Thoại 1.3.0",
+      name: "Nixio 1.3.0",
       html_url: "https://evil.example/phish",
       published_at: "2026-11-26T00:00:00Z",
       body: "New features",
       assets: [
-        { name: "Khung-Thoai-win-x64.zip", size: 1234567, browser_download_url: "https://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.0/app.zip" },
+        { name: "Nixio-win-x64.zip", size: 1234567, browser_download_url: "https://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.0/app.zip" },
         { name: "bad.exe", size: 100, browser_download_url: "http://127.0.0.1/bad.exe" },
       ],
     },
@@ -153,19 +153,19 @@ test("desktop checkForUpdates handles 404 (no public releases yet) cleanly", asy
 
 test("desktop normalization keeps trusted GitHub asset links and falls back for disallowed URLs", () => {
   const trustedHtmlUrl = "https://github.com/wiothemilo-lang/Nixio/releases/tag/v1.3.1"
-  const trustedAsset = "https://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.1/Khung-Thoai-1.3.1-win-x64.zip"
+  const trustedAsset = "https://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.1/Nixio-1.3.1-win-x64.zip"
   const signedAsset = "https://objects.githubusercontent.com/github-production-release-asset-2e65be/123?X-Amz-Signature=abc"
   const result = desktopUpdater.normalizeReleasePayload({
     tag_name: "v1.3.1",
-    name: "Khung Thoại 1.3.1",
+    name: "Nixio 1.3.1",
     html_url: trustedHtmlUrl,
     published_at: "2026-11-27T00:00:00Z",
     body: "Bản phát hành mới",
     assets: [
-      { name: "Khung-Thoai-1.3.1-win-x64.zip", size: 4096, browser_download_url: trustedAsset },
-      { name: "Khung-Thoai-1.3.1-mac-arm64.zip", size: 8192, browser_download_url: signedAsset },
-      { name: "Khung-Thoai-1.3.1-linux-x64.zip", size: 2048, browser_download_url: "https://mirror.example.net/Khung-Thoai-1.3.1-linux-x64.zip" },
-      { name: "Khung-Thoai-1.3.1-insecure.zip", size: 1024, browser_download_url: "http://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.1/insecure.zip" },
+      { name: "Nixio-1.3.1-win-x64.zip", size: 4096, browser_download_url: trustedAsset },
+      { name: "Nixio-1.3.1-mac-arm64.zip", size: 8192, browser_download_url: signedAsset },
+      { name: "Nixio-1.3.1-linux-x64.zip", size: 2048, browser_download_url: "https://mirror.example.net/Nixio-1.3.1-linux-x64.zip" },
+      { name: "Nixio-1.3.1-insecure.zip", size: 1024, browser_download_url: "http://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.1/insecure.zip" },
     ],
   }, "1.3.0")
 
@@ -195,13 +195,13 @@ test("desktop checkForUpdates pins the release API and validates every redirect 
   const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }]
   const payload = JSON.stringify({
     tag_name: "v1.3.1",
-    name: "Khung Thoại 1.3.1",
+    name: "Nixio 1.3.1",
     html_url: "https://github.com/wiothemilo-lang/Nixio/releases/tag/v1.3.1",
     body: "Ghi chú phát hành",
     assets: [{
-      name: "Khung-Thoai-1.3.1-win-x64.zip",
+      name: "Nixio-1.3.1-win-x64.zip",
       size: 4096,
-      browser_download_url: "https://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.1/Khung-Thoai-1.3.1-win-x64.zip",
+      browser_download_url: "https://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.1/Nixio-1.3.1-win-x64.zip",
     }],
   })
   const requests = []
@@ -232,13 +232,13 @@ test("desktop checkForUpdates pins the release API and validates every redirect 
   assert.equal(accepted.ok, true)
   assert.equal(accepted.hasUpdate, true)
   assert.deepEqual(accepted.release.assets.map((asset) => asset.downloadUrl), [
-    "https://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.1/Khung-Thoai-1.3.1-win-x64.zip",
+    "https://github.com/wiothemilo-lang/Nixio/releases/download/v1.3.1/Nixio-1.3.1-win-x64.zip",
   ])
   assert.equal(requests.length, 1)
   assert.equal(requests[0].url, apiUrl)
   assert.equal(requests[0].address, "93.184.216.34")
   assert.equal(requests[0].headers.Accept, "application/vnd.github+json")
-  assert.equal(requests[0].headers["User-Agent"], "KhungThoai/1.3.0")
+  assert.equal(requests[0].headers["User-Agent"], "Nixio/1.3.0")
   assert.ok(requests[0].signal instanceof AbortSignal)
 
   // A same-host redirect is followed, re-resolved and re-pinned with the same headers.
@@ -253,7 +253,7 @@ test("desktop checkForUpdates pins the release API and validates every redirect 
     ["https://api.github.com/releases/redirected", "93.184.216.34"],
     ["https://api.github.com/releases/redirected/final", "93.184.216.34"],
   ])
-  assert.equal(requests[1].headers["User-Agent"], "KhungThoai/1.3.0")
+  assert.equal(requests[1].headers["User-Agent"], "Nixio/1.3.0")
 
   // Off-policy, downgraded and internal hops are refused before any request is sent.
   for (const [url, apiPath] of [

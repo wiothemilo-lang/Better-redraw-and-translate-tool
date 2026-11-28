@@ -8,7 +8,7 @@ const MAX_HTML_DEPTH = 512
 const MAX_REDIRECTS = 5
 const TIMEOUT_MS = 12000
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
-const USER_AGENT = "KhungThoai/1.0 (Manga Editor Research Harness)"
+const USER_AGENT = "Nixio/1.0 (Manga Editor Research Harness)"
 const VOID_TAGS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"])
 
 function exceedsHtmlDepth(html, maxDepth = MAX_HTML_DEPTH) {

@@ -316,7 +316,7 @@ export function saveProjectTemplates(templates, storage = globalThis.localStorag
   try {
     storage?.setItem(
       PROJECT_TEMPLATES_KEY,
-      JSON.stringify({ version: 1, app: "khung-thoai", templates: user }),
+      JSON.stringify({ version: 1, app: "nixio", templates: user }),
     )
   } catch {
     // Ignore storage quota or private-mode errors.
@@ -334,7 +334,7 @@ export function serializeProjectTemplatesJson(templates) {
   return JSON.stringify(
     {
       version: 1,
-      app: "khung-thoai",
+      app: "nixio",
       exportedAt: new Date().toISOString(),
       templates: clean,
     },

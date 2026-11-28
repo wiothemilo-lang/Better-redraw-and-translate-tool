@@ -1,26 +1,28 @@
-# Giao diện Khung Thoại
+# Giao diện Nixio
 
-## Trang tham chiếu
+Nixio dùng giao diện **Pro Workstation** trung tính: thanh tiêu đề tối, thanh công cụ dọc 44 px với icon SVG nét mảnh, bàn vẽ lưới chấm tối đa diện tích và Inspector thu gọn dạng Accordion. Bố cục ưu tiên thao tác trên trang truyện, không dùng hình nền trang trí hay hiệu ứng che nội dung.
 
-Ảnh chụp Firecrawl trên desktop 1920 px, HTML/CSS công khai và bản phát lại qua Chromium được khảo sát ngày 26/11/2026. Ảnh chụp trang đầu có tiêu đề lớn, nút tải tiện ích Photoshop toàn chiều rộng, một cụm nhập ảnh và lời thoại, cùng cột tìm truyện nhỏ bên phải. Thương hiệu dùng hình biểu tượng thoại. [Trang tham chiếu](https://lilyzono.pages.dev/), [CSS công khai](https://lilyzono.pages.dev/styles.css), [biểu tượng](https://lilyzono.pages.dev/assets/icon.png)
+## Bảng màu
 
-| Thành phần | Giá trị quan sát từ Firecrawl |
-|---|---|
-| Nền trang và chữ chính | `#F5F3EE` và `#191E29` |
-| Nút chính | Nền `#2554CF`, chữ trắng, bo 7 px |
-| Trường nhập | Nền `#FFFEFA`, viền `#C9C7C1`, bo 6 px |
-| Kiểu chữ | Bricolage Grotesque cho tiêu đề, Be Vietnam Pro cho nội dung |
-| Kích thước chữ tại ảnh chụp | H1 khoảng 70 px, H2 khoảng 25 px, nội dung khoảng 16 px |
+| Vai trò | Light | Dark |
+|---|---|---|
+| Nền ứng dụng | `#EEF0F3` | `#121417` |
+| Bàn vẽ | `#E4E7EC` | `#101215` |
+| Bề mặt panel | `#FFFFFF` | `#191C21` |
+| Thanh tiêu đề | `#111418` | `#0E1013` |
+| Chữ chính | `#111827` | `#E7EBF0` |
+| Chữ phụ | `#5C6675` | `#8F99A8` |
+| Nhấn | `#0F9D76` | `#14B88A` |
+| Viền | `#E2E5EC` | `#282E38` |
 
-## Bản dựng
+Màu nhấn chỉ dùng cho hành động chính, trạng thái đang chọn và tiêu điểm bàn phím. Màu cảnh báo và lỗi tách riêng khỏi màu nhấn để không làm nhiễu trạng thái.
 
-| Vai trò | Giá trị trong CSS |
-|---|---|
-| Thanh điều hướng | Xanh rừng `#123E32`, chữ trắng |
-| Hành động chính | Xanh chanh nhạt `#D4EC83` |
-| Nền bàn vẽ | Xanh xám `#ECEFE8` với lưới kẻ chéo |
-| Nền thanh công cụ | `#FFFEFA` |
-| Chữ, chữ phụ và viền | `#25352D`, `#56675D` và `#D6DFD3` |
-| Kiểu chữ | Inter nếu hệ thống đã cài, sau đó dùng font hệ thống |
+## Kiểu chữ và bố cục
 
-Trên desktop, danh sách và kịch bản ở bên trái, ảnh ở giữa, bộ điều khiển khung ở bên phải. Thư viện chương mở ở một màn hình riêng. Dưới 950 px, bộ chỉnh khung chuyển xuống dưới. Dưới 610 px, các bảng xếp dọc. Trang dùng trạng thái tiêu điểm rõ cho bàn phím, thông báo động và nhãn riêng cho nút điều hướng. Nguồn triển khai nằm trong [index.html](index.html) và [src/style.css](src/style.css). Kiến trúc tiến trình, giao thức RPC và ranh giới tin cậy giữa renderer, Electron và worker C# được mô tả trong [docs/architecture.md](docs/architecture.md).
+- Font: Inter nếu hệ thống đã cài, sau đó dùng font hệ thống; cỡ gốc 14 px, tiêu đề giảm letter-spacing nhẹ.
+- Từ 950 px trở lên: danh sách trang và kịch bản bên trái, bàn vẽ ở giữa, Inspector bên phải.
+- Dưới 950 px: Inspector chuyển xuống dưới bàn vẽ. Dưới 610 px: các bảng xếp dọc, thanh công cụ thu gọn.
+- Thư viện chương và các hộp thoại lớn mở thành màn hình riêng, không ép vào panel hẹp.
+- Mọi điều khiển đều có trạng thái `:focus-visible`, nhãn cho trình đọc màn hình, live region cho thông báo động và vùng chạm tối thiểu 32 px.
+
+Nguồn triển khai nằm trong [index.html](index.html) và [src/style.css](src/style.css). Kiến trúc tiến trình, giao thức RPC và ranh giới tin cậy giữa renderer, Electron và worker C# được mô tả trong [docs/architecture.md](docs/architecture.md).

@@ -62,7 +62,7 @@ function createWindow() {
     minHeight: 520,
     show: false,
     autoHideMenuBar: true,
-    title: "Khung Thoại",
+    title: "Nixio",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

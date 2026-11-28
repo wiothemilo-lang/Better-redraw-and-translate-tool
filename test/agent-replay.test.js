@@ -424,7 +424,7 @@ test("a record exports to a file that parses back to the same run", async () => 
   const record = recorder.snapshot()
 
   const { filename, json } = exportTurnRecord(record)
-  assert.equal(filename, "khung-thoai-luot-turn-export.json")
+  assert.equal(filename, "nixio-luot-turn-export.json")
   const parsed = parseTurnRecord(json)
   assert.equal(parsed.ok, true)
   assert.equal(parsed.changed, false)

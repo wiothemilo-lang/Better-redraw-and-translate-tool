@@ -74,7 +74,7 @@ function trustedReleaseUrl(rawUrl) {
 async function fetchReleasePayload(rawUrl, { version, request, lookup, signal }) {
   let current = trustedReleaseUrl(rawUrl)
   if (!current) throw new Error("URL kiểm tra cập nhật không hợp lệ.")
-  const headers = { Accept: "application/vnd.github+json", "User-Agent": `KhungThoai/${version}` }
+  const headers = { Accept: "application/vnd.github+json", "User-Agent": `Nixio/${version}` }
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     signal.throwIfAborted()
     const address = await resolvePublicAddress(current.hostname, { lookup })

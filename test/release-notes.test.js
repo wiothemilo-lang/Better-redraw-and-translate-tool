@@ -12,20 +12,20 @@ const root = fileURLToPath(new URL("..", import.meta.url))
 const script = path.join(root, "scripts/check-release-notes.mjs")
 
 const notes = [
-  "| Windows | `Khung-Thoai-1.2.0-win-x64-setup.exe` |",
-  "| Fedora | `release-assets/khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm` |",
-  "| Portable | Giải nén và chạy `Khung-Thoai.exe` |",
+  "| Windows | `Nixio-1.2.0-win-x64-setup.exe` |",
+  "| Fedora | `release-assets/nixio-1.2.0-0.1.beta.1.x86_64.rpm` |",
+  "| Portable | Giải nén và chạy `Nixio.exe` |",
   "Kiểm tra toàn vẹn tệp bằng `SHA256SUMS.txt`.",
 ].join("\n")
 
 test("release notes are checked against the artifacts that were actually built", async (t) => {
   assert.deepEqual(assetsNamedInNotes(notes), [
-    "Khung-Thoai-1.2.0-win-x64-setup.exe",
-    "khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm",
+    "Nixio-1.2.0-win-x64-setup.exe",
+    "nixio-1.2.0-0.1.beta.1.x86_64.rpm",
   ])
-  assert.deepEqual(missingReleaseAssets(notes, ["Khung-Thoai-1.2.0-win-x64-setup.exe"]), ["khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm"])
+  assert.deepEqual(missingReleaseAssets(notes, ["Nixio-1.2.0-win-x64-setup.exe"]), ["nixio-1.2.0-0.1.beta.1.x86_64.rpm"])
 
-  const folder = await mkdtemp(path.join(os.tmpdir(), "khung-thoai-notes-"))
+  const folder = await mkdtemp(path.join(os.tmpdir(), "nixio-notes-"))
   t.after(() => rm(folder, { recursive: true, force: true }))
   const assets = path.join(folder, "release-assets")
   const notesPath = path.join(folder, "release-notes.md")
@@ -34,17 +34,17 @@ test("release notes are checked against the artifacts that were actually built",
 
   const missing = spawnSync(process.execPath, [script, notesPath, assets], { encoding: "utf8" })
   assert.equal(missing.status, 1)
-  assert.match(missing.stderr, /khung-thoai-1\.2\.0-0\.1\.beta\.1\.x86_64\.rpm/)
+  assert.match(missing.stderr, /nixio-1\.2\.0-0\.1\.beta\.1\.x86_64\.rpm/)
 
-  await writeFile(path.join(assets, "Khung-Thoai-1.2.0-win-x64-setup.exe"), "installer")
-  await writeFile(path.join(assets, "khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm"), "package")
+  await writeFile(path.join(assets, "Nixio-1.2.0-win-x64-setup.exe"), "installer")
+  await writeFile(path.join(assets, "nixio-1.2.0-0.1.beta.1.x86_64.rpm"), "package")
   const complete = spawnSync(process.execPath, [script, notesPath, assets], { encoding: "utf8" })
   assert.equal(complete.status, 0, complete.stderr)
 })
 
 test("a prerelease RPM is named after its split version, not after the tag", () => {
   const { version, release } = rpmVersionParts("1.2.0-beta.1")
-  assert.equal(`khung-thoai-${version}-${release}.x86_64.rpm`, "khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm")
+  assert.equal(`nixio-${version}-${release}.x86_64.rpm`, "nixio-1.2.0-0.1.beta.1.x86_64.rpm")
   // The name the release notes used to spell out from the tag does not exist.
-  assert.notEqual(`khung-thoai-1.2.0-beta.1-1.x86_64.rpm`, "khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm")
+  assert.notEqual(`nixio-1.2.0-beta.1-1.x86_64.rpm`, "nixio-1.2.0-0.1.beta.1.x86_64.rpm")
 })

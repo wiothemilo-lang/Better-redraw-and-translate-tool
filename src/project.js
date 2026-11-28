@@ -19,7 +19,7 @@ const encoder = new TextEncoder()
 const magic = encoder.encode("KHUNGTHOAI\n")
 const headerSize = magic.length + 4
 const manifestLimit = 16 * 1024 * 1024
-const invalidProject = () => new Error("Cấu trúc tệp dự án Khung Thoại không hợp lệ.")
+const invalidProject = () => new Error("Cấu trúc tệp dự án Nixio không hợp lệ.")
 const isText = (value) => typeof value === "string"
 const isFraction = (value) => Number.isFinite(value) && value >= 0 && value <= 1
 const inRange = (value, min, max) => Number.isFinite(value) && value >= min && value <= max

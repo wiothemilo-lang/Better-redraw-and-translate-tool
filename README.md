@@ -1,8 +1,8 @@
-# Nixio (Khung Thoại)
+# Nixio
 
 Công cụ biên tập, xóa chữ (redraw), OCR, dịch thuật và dàn thoại truyện tranh/manga chạy trên **trình duyệt Web** và **ứng dụng Desktop (Electron + lõi xử lý ảnh C#/.NET 10 tự chứa)**.
 
-Dự án được xây dựng độc lập sau khi khảo sát luồng công khai của Lilyzono, kết hợp kỹ thuật phục hồi kết cấu **PhotoCraft C# Pro** (Multi-Scale PatchMatch nhận biết cấu trúc nét, SIMD `Vector<float>`, Poisson Seamless Blending đa luồng) và kiến trúc **Trợ lý AI Agent Harness v3** (học hỏi & tối ưu từ DeepSeek Harness). Bản hiện tại trên `main` bổ sung bộ nhớ dịch, dịch tăng dần, QA triage, mẫu dự án, hồ sơ xuất theo nền tảng, kế toán token/chi phí, kho khóa hệ điều hành và giao diện vi/en/ja. Xem thêm [ANALYSIS.md](ANALYSIS.md), [DESIGN.md](DESIGN.md), [docs/architecture.md](docs/architecture.md) (kiến trúc RPC, máy trạng thái, ranh giới tin cậy IPC), [docs/i18n.md](docs/i18n.md) (catalogue giao diện, thêm ngôn ngữ) và [native/README.md](native/README.md).
+Nixio là dự án độc lập, lấy cảm hứng từ Lilyzono nhưng đã được thiết kế lại và triển khai khác hoàn toàn; mã nguồn, thuật toán và giao diện hiện tại do Nixio tự xây dựng. Lõi phục hồi kết cấu dùng **Multi-Scale PatchMatch** nhận biết cấu trúc nét, **SIMD `Vector<float>`** và **Poisson Seamless Blending** đa luồng; **Trợ lý AI Agent Harness v3** được tối ưu từ ý tưởng của DeepSeek Harness. Bản hiện tại trên `main` bổ sung bộ nhớ dịch, dịch tăng dần, QA triage, mẫu dự án, hồ sơ xuất theo nền tảng, kế toán token/chi phí, kho khóa hệ điều hành và giao diện vi/en/ja. Xem thêm [DESIGN.md](DESIGN.md), [docs/architecture.md](docs/architecture.md) (kiến trúc RPC, máy trạng thái, ranh giới tin cậy IPC), [docs/i18n.md](docs/i18n.md) (catalogue giao diện, thêm ngôn ngữ) và [native/README.md](native/README.md).
 
 ---
 
@@ -37,14 +37,14 @@ Tải bộ cài tích hợp sẵn runtime **.NET 10** tự chứa tại trang [G
 
 | Hệ điều hành | Tệp phát hành | Cách cài đặt |
 |---|---|---|
-| **Windows 10 / 11 (x64)** | `Khung-Thoai-*-win-x64-setup.exe` | Chạy trình cài đặt Inno Setup (không cần quyền Admin mặc định, tự liên kết tệp `.khungthoai`) |
-| **Windows 10 / 11 (Portable)** | `Khung-Thoai-*-win-x64-portable.zip` | Giải nén và mở `Khung-Thoai.exe` |
-| **macOS 12+ (Apple Silicon)** | `Khung-Thoai-*-mac-arm64.dmg` | Mở `.dmg` và kéo **Khung Thoại** vào `Applications` |
-| **macOS 12+ (Intel)** | `Khung-Thoai-*-mac-x64.dmg` | Mở `.dmg` và kéo **Khung Thoại** vào `Applications` |
-| **macOS (Portable)** | `Khung-Thoai-*-mac-arm64.zip` / `Khung-Thoai-*-mac-x64.zip` | Giải nén và mở `Khung-Thoai.app` |
-| **Ubuntu / Debian / Mint / Pop!_OS (x64)** | `khung-thoai_*_amd64.deb` | `sudo apt install ./khung-thoai_*_amd64.deb` *(tương thích cả Debian 11/12 và Ubuntu 22.04/24.04 `t64`)* |
-| **Fedora Linux (x64)** | `khung-thoai-*-1.x86_64.rpm` | `sudo dnf install ./khung-thoai-*-1.x86_64.rpm` |
-| **Linux khác (Portable x64)** | `khung-thoai-*-linux-x64.tar.gz` | Giải nén và chạy `./Khung-Thoai` |
+| **Windows 10 / 11 (x64)** | `Nixio-*-win-x64-setup.exe` | Chạy trình cài đặt Inno Setup (không cần quyền Admin mặc định, tự liên kết tệp `.khungthoai`) |
+| **Windows 10 / 11 (Portable)** | `Nixio-*-win-x64-portable.zip` | Giải nén và mở `Nixio.exe` |
+| **macOS 12+ (Apple Silicon)** | `Nixio-*-mac-arm64.dmg` | Mở `.dmg` và kéo **Nixio** vào `Applications` |
+| **macOS 12+ (Intel)** | `Nixio-*-mac-x64.dmg` | Mở `.dmg` và kéo **Nixio** vào `Applications` |
+| **macOS (Portable)** | `Nixio-*-mac-arm64.zip` / `Nixio-*-mac-x64.zip` | Giải nén và mở `Nixio.app` |
+| **Ubuntu / Debian / Mint / Pop!_OS (x64)** | `nixio_*_amd64.deb` | `sudo apt install ./nixio_*_amd64.deb` *(tương thích cả Debian 11/12 và Ubuntu 22.04/24.04 `t64`)* |
+| **Fedora Linux (x64)** | `nixio-*-1.x86_64.rpm` | `sudo dnf install ./nixio-*-1.x86_64.rpm` |
+| **Linux khác (Portable x64)** | `nixio-*-linux-x64.tar.gz` | Giải nén và chạy `./Nixio` |
 
 > **OCR cục bộ offline (tùy chọn)**: cài thêm Tesseract cho hệ điều hành của bạn:
 > - **Ubuntu / Debian**: `sudo apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-jpn tesseract-ocr-jpn-vert`
@@ -81,7 +81,7 @@ npm run desktop:native                  # Biên dịch lõi C# (.NET 10 SDK) và
 npm run desktop                         # Build web và mở app Electron
 npm run desktop:package -- linux-x64    # Đóng gói Electron + runtime .NET vào desktop-dist/
 npm run desktop:package -- win-x64      # Tương tự cho Windows x64
-npm run desktop:package -- osx-arm64    # macOS Apple Silicon (.app trong desktop-dist/Khung-Thoai-darwin-arm64/)
+npm run desktop:package -- osx-arm64    # macOS Apple Silicon (.app trong desktop-dist/Nixio-darwin-arm64/)
 npm run desktop:package -- osx-x64      # macOS Intel
 ```
 
@@ -100,7 +100,7 @@ npm run desktop:release -- osx-x64
 
 | Biến môi trường | Ý nghĩa |
 |---|---|
-| `CODESIGN_IDENTITY` | Chuỗi định danh Developer ID, ví dụ `Developer ID Application: Khung Thoai (ABCDE12345)` |
+| `CODESIGN_IDENTITY` | Chuỗi định danh Developer ID, ví dụ `Developer ID Application: Nixio (ABCDE12345)` |
 | `MAC_NOTARIZE` | Đặt `1` để notarise; bỏ trống để chỉ ký cục bộ |
 | `APPLE_ID` | Apple ID của tài khoản developer |
 | `APPLE_APP_SPECIFIC_PASSWORD` | Mật khẩu ứng dụng riêng cho `notarytool` |
@@ -111,7 +111,7 @@ Thiếu thông tin xác thực thì lệnh dừng ngay bằng lỗi tiếng Vi�
 **Nhánh không ký (unsigned)**: nếu không đặt `CODESIGN_IDENTITY`, bước ký và notarisation được bỏ qua, `.app`/`.dmg`/`.zip` vẫn được tạo và ghi cảnh báo `CODESIGN_IDENTITY chưa đặt — bỏ qua bước ký`. Người dùng cuối mở bản này bằng chuột phải → **Open**, hoặc gỡ cờ cách ly một lần:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/Khung-Thoai.app
+xattr -dr com.apple.quarantine /Applications/Nixio.app
 ```
 
 Bật `MAC_NOTARIZE=1` mà thiếu `CODESIGN_IDENTITY` cũng dừng bằng lỗi tiếng Việt tương ứng — không có bản notarise nào được tạo từ app chưa ký.
@@ -272,7 +272,7 @@ Nixio/
   - **Trung tâm Thông báo** (nút **Thông báo** có huy hiệu chưa đọc + toast góc dưới phải tự ẩn, tạm dừng khi rê chuột): Tự động cảnh báo **khung tràn chữ** kèm nút 1 chạm **Khớp cỡ cả trang**, **nhắc lưu dự án** khi có nhiều chỉnh sửa chưa lưu ra tệp `.khungthoai`, báo hoàn tất xuất/dịch hàng loạt, báo chỉnh sửa của Trợ lý AI kèm nút **Hoàn tác**, phát hiện mất/có lại kết nối mạng và nhắc bản tự lưu phục hồi.
 
 ### 6. Dự án `.khungthoai`, tự lưu và xuất tệp
-- **Lưu / Mở dự án**: Tệp `.khungthoai` là một header nhị phân (`KHUNGTHOAI\n` + độ dài manifest) bọc manifest JSON và ảnh gốc. Bản ghi **v2** lưu ảnh gốc, mã dự án phục hồi, thứ tự trang, kịch bản, khung thoại (kiểu chữ nâng cao, viền, đổ bóng, font tùy chỉnh, vùng xóa, nét cọ), nét retouch (`paint`, `clone`, `inpaint`), mẫu dàn chữ, bảng thuật ngữ và tiến độ dịch; **v3** thêm bộ nhớ dịch và `templateId`; **v4** thêm stack lớp của từng trang và quyết định QA triage. Tệp chỉ khai báo đúng phiên bản nó cần, nên bản cũ vẫn mở được tệp không dùng tính năng mới, còn app hiện tại đọc tương thích ngược **v1–v4**.
+- **Lưu / Mở dự án**: Tệp `.khungthoai` là một header nhị phân (`KHUNGTHOAI\n` + độ dài manifest) bọc manifest JSON và ảnh gốc. Định dạng `.khungthoai` và magic `KHUNGTHOAI` được giữ nguyên để mở lại dự án cũ; đây là định danh kỹ thuật của định dạng, không phải tên thương hiệu. Bản ghi **v2** lưu ảnh gốc, mã dự án phục hồi, thứ tự trang, kịch bản, khung thoại (kiểu chữ nâng cao, viền, đổ bóng, font tùy chỉnh, vùng xóa, nét cọ), nét retouch (`paint`, `clone`, `inpaint`), mẫu dàn chữ, bảng thuật ngữ và tiến độ dịch; **v3** thêm bộ nhớ dịch và `templateId`; **v4** thêm stack lớp của từng trang và quyết định QA triage. Tệp chỉ khai báo đúng phiên bản nó cần, nên bản cũ vẫn mở được tệp không dùng tính năng mới, còn app hiện tại đọc tương thích ngược **v1–v4**.
 - **Tự lưu phục hồi**:
   - *Bản Web*: Tự lưu phiên hiện tại vào IndexedDB mỗi 20 giây khi có thay đổi và khi ẩn/rời tab. Mỗi bản lưu ghi kèm mã dự án, số hiệu chỉnh sửa, thời điểm và tab đã ghi, và **mỗi page instance sở hữu một slot riêng**: lưu lại chỉ thay slot của chính nó, không bao giờ dọn bản của tab khác, nên hai tab mở hai dự án khác nhau — hoặc cùng một dự án với nội dung lệch nhau, kể cả tab nhân bản chia sẻ `sessionStorage` — đều giữ được bản riêng thay vì ghi đè lẫn nhau. Kho giữ tối đa 8 bản và 3 bản mỗi dự án; khi đã đầy, lần lưu mới bị từ chối kèm hướng dẫn bỏ bớt một bản cũ, các bản đã có vẫn nguyên và phiên hiện tại tiếp tục ở trạng thái chưa lưu. Danh sách **Bản tự lưu trên trình duyệt** hiển thị từng bản (tên tệp, số trang, thời điểm, bản cũ/phiên khác) để chọn đúng bản rồi **Khôi phục bản đã chọn** hoặc **Bỏ bản đã chọn**; bản ghi cũ `latest` của phiên bản trước và font đã nạp được chuyển đổi, giữ nguyên.
   - *Bản Desktop*: **Dự án gần đây và phục hồi** liệt kê từng dự án cùng tối đa 10 mốc tự lưu gần nhất, hỗ trợ mở lại bản tự lưu cũ và giữ bản `.bak` trước khi ghi đè. Trạng thái **Còn thay đổi chưa lưu** phản ánh việc lưu tệp thủ công.
@@ -319,7 +319,7 @@ Chọn truyện và chương để đọc, chuyển ảnh vào trình biên tậ
 Chạy toàn bộ bộ test bằng Node.js 22.12+:
 
 ```sh
-npm test                 # 96 tệp / 853 test (826 chạy + 27 bỏ qua khi thiếu .NET 10)
+npm test                 # 96 tệp / 867 test (840 chạy + 27 bỏ qua khi thiếu .NET 10)
 npm run test:coverage    # Báo cáo độ phủ + luật phủ controller/tool registry
 npm run test:autosave    # Harness tự lưu trên Chromium thật (Playwright + IndexedDB giả)
 npm run test:visual      # So khớp ảnh chụp giao diện với baseline đã commit

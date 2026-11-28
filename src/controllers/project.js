@@ -137,7 +137,7 @@ export function setupProjects({
       const file = projectBlob()
       const snapshotRevision = revision
       const name =
-        projectName ?? filenameStem(state.pages[0]?.name ?? "khung-thoai")
+        projectName ?? filenameStem(state.pages[0]?.name ?? "nixio")
       if (nativeReady) {
         state.savingProject = true
         renderPages()
@@ -629,7 +629,7 @@ export function setupProjects({
 
   byId("export-templates").onclick = () => {
     const json = serializeProjectTemplatesJson(projectTemplates)
-    saveFile(new Blob([json], { type: "application/json;charset=utf-8" }), "khung-thoai-templates.json")
+    saveFile(new Blob([json], { type: "application/json;charset=utf-8" }), "nixio-templates.json")
     status("Đã xuất danh sách mẫu dự án ra tệp JSON.")
   }
 

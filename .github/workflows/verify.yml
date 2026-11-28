@@ -84,9 +84,9 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          APP="desktop-dist/Khung-Thoai-darwin-$(node -p 'process.arch')/Khung-Thoai.app"
+          APP="desktop-dist/Nixio-darwin-$(node -p 'process.arch')/Nixio.app"
           test -f "$APP/Contents/Resources/native-worker/KhungThoai.Redraw"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist" | grep -qx "com.khungthoai.editor"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist" | grep -qx "com.nixio.editor"
       - name: Exercise packaged desktop on macOS
         if: runner.os == 'macOS'
         run: npm run test:desktop -- --packaged

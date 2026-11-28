@@ -162,16 +162,16 @@ jobs:
         run: |
           set -euo pipefail
           VER="${{ needs.meta.outputs.version }}"
-          DMG="release-dist/Khung-Thoai-${VER}-mac-${{ matrix.arch }}.dmg"
-          ZIP="release-dist/Khung-Thoai-${VER}-mac-${{ matrix.arch }}.zip"
-          APP="desktop-dist/Khung-Thoai-darwin-${{ matrix.arch }}/Khung-Thoai.app"
+          DMG="release-dist/Nixio-${VER}-mac-${{ matrix.arch }}.dmg"
+          ZIP="release-dist/Nixio-${VER}-mac-${{ matrix.arch }}.zip"
+          APP="desktop-dist/Nixio-darwin-${{ matrix.arch }}/Nixio.app"
           ls -l release-dist
           test -s "$DMG"
           test -s "$ZIP"
           hdiutil imageinfo "$DMG" > /dev/null
-          unzip -l "$ZIP" | grep -q "Khung-Thoai.app/Contents/Info.plist"
+          unzip -l "$ZIP" | grep -q "Nixio.app/Contents/Info.plist"
           test -f "$APP/Contents/Resources/native-worker/KhungThoai.Redraw"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist" | grep -qx "com.khungthoai.editor"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist" | grep -qx "com.nixio.editor"
           if [ -n "${{ secrets.MACOS_CODESIGN_IDENTITY }}" ]; then
             codesign --verify --deep --strict "$APP"
             codesign -dv --verbose=4 "$APP" 2>&1 | grep -q "flags=0x10000(runtime)"
@@ -237,7 +237,7 @@ jobs:
           VER: ${{ needs.meta.outputs.version }}
         run: |
           # An RPM filename splits a prerelease version into version and release (1.2.0-beta.1 becomes
-          # khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm), so the name in the notes is read from the
+          # nixio-1.2.0-0.1.beta.1.x86_64.rpm), so the name in the notes is read from the
           # artifacts themselves instead of being spelled out from the tag.
           # The `|| true` matters: under `set -eo pipefail` a failing `ls` would abort this step
           # before the guard below could say what was missing.
@@ -250,22 +250,22 @@ jobs:
           fi
 
           cat << EOF > release-notes.md
-          # Nixio (Khung Thoại) ${TAG}
+          # Nixio ${TAG}
 
-          Bản phát hành chính thức **Nixio (Khung Thoại) ${TAG}** — ứng dụng biên tập, xóa chữ (redraw), OCR, dịch thuật và dàn thoại truyện tranh/manga với lõi xử lý ảnh **C#/.NET 10** tự chứa, hỗ trợ **Windows 10/11**, **macOS 12+ (Apple Silicon & Intel)**, **Ubuntu / Debian-based Linux** và **Fedora Linux**.
+          Bản phát hành chính thức **Nixio ${TAG}** — ứng dụng biên tập, xóa chữ (redraw), OCR, dịch thuật và dàn thoại truyện tranh/manga với lõi xử lý ảnh **C#/.NET 10** tự chứa, hỗ trợ **Windows 10/11**, **macOS 12+ (Apple Silicon & Intel)**, **Ubuntu / Debian-based Linux** và **Fedora Linux**.
 
           ## Tải về theo hệ điều hành
 
           | Hệ điều hành | Gói cài đặt | Cách cài đặt nhanh |
           |---|---|---|
-          | **Windows 10 / 11 (x64)** | \`Khung-Thoai-${VER}-win-x64-setup.exe\` | Chạy trình cài đặt (không cần quyền Admin, tự liên kết tệp \`.khungthoai\`) |
-          | **Windows 10 / 11 (Portable)** | \`Khung-Thoai-${VER}-win-x64-portable.zip\` | Giải nén và chạy \`Khung-Thoai.exe\` |
-          | **macOS (Apple Silicon, arm64)** | \`Khung-Thoai-${VER}-mac-arm64.dmg\` | Mở tệp \`.dmg\` và kéo **Khung Thoại** vào \`Applications\` |
-          | **macOS (Intel, x64)** | \`Khung-Thoai-${VER}-mac-x64.dmg\` | Mở tệp \`.dmg\` và kéo **Khung Thoại** vào \`Applications\` |
-          | **macOS (Portable)** | \`Khung-Thoai-${VER}-mac-arm64.zip\` / \`Khung-Thoai-${VER}-mac-x64.zip\` | Giải nén và mở \`Khung-Thoai.app\` |
-          | **Ubuntu / Debian / Mint / Pop!_OS (x64)** | \`khung-thoai_${VER}_amd64.deb\` | \`sudo apt install ./khung-thoai_${VER}_amd64.deb\` |
+          | **Windows 10 / 11 (x64)** | \`Nixio-${VER}-win-x64-setup.exe\` | Chạy trình cài đặt (không cần quyền Admin, tự liên kết tệp \`.khungthoai\`) |
+          | **Windows 10 / 11 (Portable)** | \`Nixio-${VER}-win-x64-portable.zip\` | Giải nén và chạy \`Nixio.exe\` |
+          | **macOS (Apple Silicon, arm64)** | \`Nixio-${VER}-mac-arm64.dmg\` | Mở tệp \`.dmg\` và kéo **Nixio** vào \`Applications\` |
+          | **macOS (Intel, x64)** | \`Nixio-${VER}-mac-x64.dmg\` | Mở tệp \`.dmg\` và kéo **Nixio** vào \`Applications\` |
+          | **macOS (Portable)** | \`Nixio-${VER}-mac-arm64.zip\` / \`Nixio-${VER}-mac-x64.zip\` | Giải nén và mở \`Nixio.app\` |
+          | **Ubuntu / Debian / Mint / Pop!_OS (x64)** | \`nixio_${VER}_amd64.deb\` | \`sudo apt install ./nixio_${VER}_amd64.deb\` |
           | **Fedora Linux (x64)** | \`${RPM_FILE}\` | \`sudo dnf install ./${RPM_FILE}\` |
-          | **Linux khác (Portable x64)** | \`khung-thoai-${VER}-linux-x64.tar.gz\` | Giải nén và chạy \`./Khung-Thoai\` |
+          | **Linux khác (Portable x64)** | \`nixio-${VER}-linux-x64.tar.gz\` | Giải nén và chạy \`./Nixio\` |
 
           ## Bật OCR cục bộ (tùy chọn)
           Ứng dụng tích hợp sẵn lõi redraw/inpaint C#/.NET 10. Để dùng thêm **OCR offline**:
@@ -295,10 +295,10 @@ jobs:
           node scripts/check-release-notes.mjs release-notes.md release-assets
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "Nixio (Khung Thoại) ${TAG}" --notes-file release-notes.md
+            gh release edit "$TAG" --title "Nixio ${TAG}" --notes-file release-notes.md
             gh release upload "$TAG" release-assets/* --clobber
           else
             gh release create "$TAG" release-assets/* \
-              --title "Nixio (Khung Thoại) ${TAG}" \
+              --title "Nixio ${TAG}" \
               --notes-file release-notes.md
           fi

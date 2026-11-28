@@ -11,9 +11,9 @@ const root = path.resolve(import.meta.dirname, "..")
 const packaged = process.argv.includes("--packaged")
 // @electron/packager wraps the macOS build in a bundle; Linux and Windows run the binary directly.
 function packagedExecutable() {
-  const bundle = path.join(root, "desktop-dist", "Khung-Thoai-" + process.platform + "-" + process.arch)
-  if (process.platform === "darwin") return path.join(bundle, "Khung-Thoai.app", "Contents", "MacOS", "Khung-Thoai")
-  return path.join(bundle, "Khung-Thoai" + (process.platform === "win32" ? ".exe" : ""))
+  const bundle = path.join(root, "desktop-dist", "Nixio-" + process.platform + "-" + process.arch)
+  if (process.platform === "darwin") return path.join(bundle, "Nixio.app", "Contents", "MacOS", "Nixio")
+  return path.join(bundle, "Nixio" + (process.platform === "win32" ? ".exe" : ""))
 }
 const executablePath = packaged ? packagedExecutable() : require("electron")
 const directory = await mkdtemp(path.join(os.tmpdir(), "khung-thoai-smoke-"))
@@ -128,7 +128,7 @@ try {
     () => app.evaluate(() => globalThis.downloads[1] ?? null),
     "profile ZIP download",
   )
-  assert.match(zipPath, /khung-thoai-goc\.zip$/)
+  assert.match(zipPath, /nixio-goc\.zip$/)
   const zip = await JSZip.loadAsync(await readFile(zipPath))
   assert.deepEqual(Object.keys(zip.files), ["01-01.png", "manifest.json"])
   // The status line still names the previous heartbeat's save, so its text is only meaningful

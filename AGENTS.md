@@ -91,7 +91,6 @@ Node 22.12+, `node:test` + `node:assert/strict`; tên test là câu mô tả hà
 | Vị trí | Vấn đề | Hướng xử lý |
 |---|---|---|
 | `src/provider-registry.js`, `index.html` | Model Gemini `gemini-3.1-flash-lite`, `gemini-3.5-flash-lite` chưa xác nhận tồn tại | Đối chiếu tài liệu Google rồi sửa cả hai nơi + test |
-| `src/agent-context.js`, `src/controllers/chat.js` | Nhãn "Harness v2.5" trong khi kiến trúc là v3 | Sửa chuỗi, không đổi hành vi |
 | `src/updater.js` | `APP_VERSION = "1.3.0"` trùng `package.json` | Bump cùng lúc với release notes |
 | 27 test native | Bị skip khi thiếu `dotnet` | Không coi là đã kiểm chứng native |
 

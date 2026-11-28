@@ -41,7 +41,7 @@ test("resolveSourceDateEpoch prefers SOURCE_DATE_EPOCH and falls back to git HEA
 })
 
 test("normalizeTreeTimestamps pins every file, directory and symlink to the epoch", { skip: gnuTools }, (t) => {
-  const dir = mkdtempSync(path.join(tmpdir(), "khung-thoai-mtime-"))
+  const dir = mkdtempSync(path.join(tmpdir(), "nixio-mtime-"))
   t.after(() => spawnSync("rm", ["-rf", dir]))
   mkdirSync(path.join(dir, "sub", "deep"), { recursive: true })
   writeFileSync(path.join(dir, "sub", "deep", "a.bin"), "alpha")
@@ -62,10 +62,10 @@ test("buildTarArgs produces sorted, owner-normalised, epoch-pinned tar arguments
   const args = buildTarArgs({
     archivePath: "/out/app.tar",
     stageDir: "/stage",
-    folderName: "khung-thoai-1.0.0-linux-x64",
+    folderName: "nixio-1.0.0-linux-x64",
     epochSeconds: EPOCH,
   })
-  assert.deepEqual(args.slice(-3), ["-C", "/stage", "khung-thoai-1.0.0-linux-x64"])
+  assert.deepEqual(args.slice(-3), ["-C", "/stage", "nixio-1.0.0-linux-x64"])
   for (const flag of ["--sort=name", "--dereference", `--mtime=@${EPOCH}`, "--owner=0", "--group=0", "--numeric-owner"]) {
     assert.ok(args.includes(flag), `missing ${flag}`)
   }
@@ -82,7 +82,7 @@ function packTarball(stageDir, folderName, epoch) {
 }
 
 test("two tar.gz builds from identical trees with different mtimes are byte-identical", { skip: gnuTools }, (t) => {
-  const base = mkdtempSync(path.join(tmpdir(), "khung-thoai-tar-"))
+  const base = mkdtempSync(path.join(tmpdir(), "nixio-tar-"))
   t.after(() => spawnSync("rm", ["-rf", base]))
   const digests = []
   for (const run of ["a", "b"]) {
@@ -94,14 +94,14 @@ test("two tar.gz builds from identical trees with different mtimes are byte-iden
     writeFileSync(path.join(payload, "adir", "m.bin"), "m")
     const stage = path.join(base, run, "stage")
     mkdirSync(stage)
-    symlinkSync(payload, path.join(stage, "khung-thoai-1.0.0-linux-x64"))
+    symlinkSync(payload, path.join(stage, "nixio-1.0.0-linux-x64"))
     // Give run "b" different mtimes and creation order to prove they are normalised.
     if (run === "b") {
       for (const rel of ["a-first.txt", "zdir/z-last.txt", "adir/m.bin", "zdir", "adir"]) {
         utimesSync(path.join(payload, rel), new Date(500000000 * 1000), new Date(500000000 * 1000))
       }
     }
-    digests.push(sha256FileSync(packTarball(stage, "khung-thoai-1.0.0-linux-x64", EPOCH)))
+    digests.push(sha256FileSync(packTarball(stage, "nixio-1.0.0-linux-x64", EPOCH)))
   }
   assert.equal(digests[0], digests[1])
 })
@@ -111,7 +111,7 @@ function sha256FileSync(file) {
 }
 
 test("buildInputManifest records sorted input digests, builders and epoch", async (t) => {
-  const dir = mkdtempSync(path.join(tmpdir(), "khung-thoai-manifest-"))
+  const dir = mkdtempSync(path.join(tmpdir(), "nixio-manifest-"))
   t.after(() => spawnSync("rm", ["-rf", dir]))
   mkdirSync(path.join(dir, "native"), { recursive: true })
   mkdirSync(path.join(dir, "scripts"), { recursive: true })
@@ -123,7 +123,7 @@ test("buildInputManifest records sorted input digests, builders and epoch", asyn
   writeFileSync(path.join(dir, "scripts", "package-release.mjs"), "export {}")
 
   const manifest = await buildInputManifest({ rootDir: dir, version: "9.9.9", sourceDateEpoch: EPOCH, env: {} })
-  assert.equal(manifest.format, "khung-thoai-release-manifest")
+  assert.equal(manifest.format, "nixio-release-manifest")
   assert.equal(manifest.formatVersion, 1)
   assert.equal(manifest.appVersion, "9.9.9")
   assert.equal(manifest.sourceDateEpoch, EPOCH)

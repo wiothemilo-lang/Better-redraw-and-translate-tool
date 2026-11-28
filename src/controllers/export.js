@@ -110,7 +110,7 @@ export function setupExports({
       serializeExportManifest(exportManifest({ profile, plans })),
       { date: exportArchiveDate },
     )
-    saveFile(await zip.generateAsync({ type: "blob" }), `khung-thoai-${profile.id}.zip`)
+    saveFile(await zip.generateAsync({ type: "blob" }), `nixio-${profile.id}.zip`)
     return plans.reduce((total, { plan }) => total + plan.slices.length, 0)
   }
 
@@ -465,7 +465,7 @@ export function setupExports({
     const pages = zipPages ?? state.pages
     zipPages = null
     const customName = byId("zip-name").value.trim()
-    const zipName = `${customName ? filenameStem(customName) : "khung-thoai"}-${format}.zip`
+    const zipName = `${customName ? filenameStem(customName) : "nixio"}-${format}.zip`
     let profile
     try {
       profile = activeProfile()

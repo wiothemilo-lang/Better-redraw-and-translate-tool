@@ -381,7 +381,7 @@ export function parseTurnRecord(input) {
 
 export function turnRecordFilename(record) {
   const id = String(record?.id || "turn").replace(/[^\w.-]+/g, "-")
-  return `khung-thoai-luot-${id}.json`
+  return `nixio-luot-${id}.json`
 }
 
 export function exportTurnRecord(record, { pretty = true } = {}) {

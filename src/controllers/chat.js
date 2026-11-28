@@ -757,7 +757,7 @@ export function setupChat({
     const intro = document.createElement("div")
     intro.className = "chat-msg system"
     intro.textContent =
-      "Trợ lý AI Harness v2.5 hỗ trợ ngữ cảnh dự án trực tiếp, hồ sơ kỹ năng theo thể loại, thẻ hỏi trắc nghiệm, duyệt từng thay đổi AI (kèm duyệt thao tác hàng loạt), Chế độ Kế hoạch (Plan Mode), tự thử lại khi lỗi mạng/429, chống lặp công cụ và lệnh nhanh (/qc, /plan, /autofit, /compact, /skill, /help)."
+      "Trợ lý AI Harness v3 hỗ trợ ngữ cảnh dự án trực tiếp, hồ sơ kỹ năng theo thể loại, thẻ hỏi trắc nghiệm, duyệt từng thay đổi AI (kèm duyệt thao tác hàng loạt), Chế độ Kế hoạch (Plan Mode), tự thử lại khi lỗi mạng/429, chống lặp công cụ và lệnh nhanh (/qc, /plan, /autofit, /compact, /skill, /help)."
     messagesEl.append(intro)
   }
 

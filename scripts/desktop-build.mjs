@@ -30,8 +30,8 @@ if (mode === "app") {
   run(process.execPath, [path.join(root, "node_modules", "vite", "bin", "vite.js"), "build"])
   const paths = await packager({
     dir: root,
-    name: "Khung-Thoai",
-    executableName: "Khung-Thoai",
+    name: "Nixio",
+    executableName: "Nixio",
     platform,
     arch,
     ...(platform === "darwin" ? macPackagerOptions() : {}),

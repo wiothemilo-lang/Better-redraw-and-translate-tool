@@ -44,9 +44,9 @@ test("every release build job checks out the commit the release tag points at", 
 test("the release notes take the RPM file name from the artifacts and every name they mention exists", async () => {
   const blocks = await jobs()
   const publish = joined(blocks, "publish")
-  // The RPM file name splits a prerelease version (1.2.0-beta.1 => khung-thoai-1.2.0-0.1.beta.1...),
+  // The RPM file name splits a prerelease version (1.2.0-beta.1 => nixio-1.2.0-0.1.beta.1...),
   // so a name rewritten from the tag does not exist on prereleases.
-  assert.doesNotMatch(publish, /khung-thoai-\$\{VER\}-1\.x86_64\.rpm/)
+  assert.doesNotMatch(publish, /nixio-\$\{VER\}-1\.x86_64\.rpm/)
   // A failing `ls` inside $( ) aborts a bash -eo pipefail step before its own guard can explain
   // what was missing, so the glob is read without the `cd` and its exit code cannot leak.
   // The basename is what an artifact is actually called: a path prefix would slip past the check and

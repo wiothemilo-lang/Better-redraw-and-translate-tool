@@ -1192,7 +1192,7 @@ byId("delete-preset").onclick = () => {
 byId("export-presets")?.addEventListener("click", () => {
   if (!state.presets.length) return status(msg("status.preset.none"), true)
   const json = serializePresetsJson(state.presets)
-  saveFile(new Blob([json], { type: "application/json;charset=utf-8" }), "khung-thoai-presets.json")
+  saveFile(new Blob([json], { type: "application/json;charset=utf-8" }), "nixio-presets.json")
   status(msg("status.preset.exported", { count: state.presets.length }))
 })
 

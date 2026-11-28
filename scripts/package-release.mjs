@@ -23,9 +23,9 @@ import path from "node:path"
 const root = fileURLToPath(new URL("..", import.meta.url))
 const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"))
 
-export const APP_NAME = "Khung Thoại"
-export const PACKAGE_ID = "khung-thoai"
-export const APP_BINARY = "Khung-Thoai"
+export const APP_NAME = "Nixio"
+export const PACKAGE_ID = "nixio"
+export const APP_BINARY = "Nixio"
 export const INNO_APP_ID = "{{7B6A2E3F-9C4D-4E5A-8B1F-4A9E6D2C8F01}"
 export const HOMEPAGE = "https://github.com/wiothemilo-lang/Nixio"
 
@@ -55,8 +55,8 @@ export function buildDesktopEntry() {
     "Terminal=false",
     "Categories=Graphics;2DGraphics;Utility;",
     "Keywords=manga;comic;redraw;translate;typeset;ocr;",
-    "StartupWMClass=Khung-Thoai",
-    "MimeType=application/x-khung-thoai;",
+    "StartupWMClass=Nixio",
+    "MimeType=application/x-nixio;",
     "",
   ].join("\n")
 }
@@ -65,8 +65,8 @@ export function buildMimeXml() {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">',
-    '  <mime-type type="application/x-khung-thoai">',
-    "    <comment>Khung Thoại Project</comment>",
+    '  <mime-type type="application/x-nixio">',
+    "    <comment>Nixio Project</comment>",
     '    <glob pattern="*.khungthoai"/>',
     "  </mime-type>",
     "</mime-info>",
@@ -91,11 +91,11 @@ export function buildDebianControl({ version, arch = "amd64", installedSizeKb = 
     "Priority: optional",
     `Architecture: ${arch}`,
     ...(installedSizeKb > 0 ? [`Installed-Size: ${installedSizeKb}`] : []),
-    "Maintainer: Khung Thoai Maintainers <noreply@github.com>",
+    "Maintainer: Nixio Maintainers <noreply@github.com>",
     `Homepage: ${HOMEPAGE}`,
     "Depends: libgtk-3-0 | libgtk-3-0t64, libnss3, libgbm1, libxss1, libasound2 | libasound2t64, libatk-bridge2.0-0 | libatk-bridge2.0-0t64, libdrm2",
     "Recommends: tesseract-ocr, tesseract-ocr-eng, tesseract-ocr-jpn-vert",
-    "Description: Khung Thoai - Manga redraw, translate, OCR and typesetting studio",
+    "Description: Nixio - Manga redraw, translate, OCR and typesetting studio",
     " Desktop editor for manga and comic scanlation with C#/.NET 10 texture redraw",
     " & multi-scale PatchMatch inpaint, local Tesseract OCR, Gemini / Local LLM",
     " translation, and AI Agent Harness with Web Search.",
@@ -147,7 +147,7 @@ export function buildRpmSpec({ version, sourceDir, iconPath, arch = "x86_64", so
     `Name:           ${PACKAGE_ID}`,
     `Version:        ${rpmVer}`,
     `Release:        ${rpmRel}`,
-    "Summary:        Khung Thoai - Manga redraw, translate, OCR and typesetting studio",
+    "Summary:        Nixio - Manga redraw, translate, OCR and typesetting studio",
     "License:        MIT",
     `URL:            ${HOMEPAGE}`,
     `BuildArch:      ${arch}`,
@@ -216,11 +216,11 @@ export function buildInnoSetupScript({ version, sourceDir, outputDir, outputBase
     `AppName=${APP_NAME}`,
     `AppVersion=${ver}`,
     `AppVerName=${APP_NAME} ${ver}`,
-    "AppPublisher=Khung Thoai",
+    "AppPublisher=Nixio",
     `AppPublisherURL=${HOMEPAGE}`,
     `AppSupportURL=${HOMEPAGE}/issues`,
     `AppUpdatesURL=${HOMEPAGE}/releases`,
-    `DefaultDirName={autopf}\\Khung Thoai`,
+    `DefaultDirName={autopf}\\Nixio`,
     `DefaultGroupName=${APP_NAME}`,
     "DisableProgramGroupPage=yes",
     "PrivilegesRequired=lowest",
@@ -249,9 +249,9 @@ export function buildInnoSetupScript({ version, sourceDir, outputDir, outputBase
     `Name: "{autodesktop}\\${APP_NAME}"; Filename: "{app}\\${APP_BINARY}.exe"; Tasks: desktopicon`,
     "",
     "[Registry]",
-    `Root: HKA; Subkey: "Software\\Classes\\.khungthoai"; ValueType: string; ValueName: ""; ValueData: "KhungThoai.Project"; Flags: uninsdeletevalue`,
-    `Root: HKA; Subkey: "Software\\Classes\\KhungThoai.Project"; ValueType: string; ValueName: ""; ValueData: "Khung Thoai Project"; Flags: uninsdeletekey`,
-    `Root: HKA; Subkey: "Software\\Classes\\KhungThoai.Project\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\${APP_BINARY}.exe"" ""%1"""`,
+    `Root: HKA; Subkey: "Software\\Classes\\.khungthoai"; ValueType: string; ValueName: ""; ValueData: "Nixio.Project"; Flags: uninsdeletevalue`,
+    `Root: HKA; Subkey: "Software\\Classes\\Nixio.Project"; ValueType: string; ValueName: ""; ValueData: "Nixio Project"; Flags: uninsdeletekey`,
+    `Root: HKA; Subkey: "Software\\Classes\\Nixio.Project\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\${APP_BINARY}.exe"" ""%1"""`,
     "",
     "[Run]",
     `Filename: "{app}\\${APP_BINARY}.exe"; Description: "Launch ${APP_NAME}"; Flags: nowait postinstall skipifsilent`,
@@ -262,7 +262,7 @@ export function buildInnoSetupScript({ version, sourceDir, outputDir, outputBase
 export const MAC_APP_BUNDLE = `${APP_BINARY}.app`
 export const MAC_ARCHITECTURES = ["arm64", "x64"]
 export const MAC_TARGETS = ["app", "dmg", "zip"]
-export const MAC_BUNDLE_ID = "com.khungthoai.editor"
+export const MAC_BUNDLE_ID = "com.nixio.editor"
 const MAC_SIGNING_KEYS = { appleId: "APPLE_ID", password: "APPLE_APP_SPECIFIC_PASSWORD", teamId: "APPLE_TEAM_ID" }
 const MACHO_MAGIC = new Set([0xfeedface, 0xfeedfacf, 0xcafebabe, 0xcefaedfe, 0xcffaedfe])
 
@@ -490,7 +490,7 @@ export async function buildInputManifest({ rootDir = root, version, env = proces
   const epoch = sourceDateEpoch
     ?? (env.SOURCE_DATE_EPOCH ? normalizeSourceDateEpoch(env.SOURCE_DATE_EPOCH) : git?.commitTime ?? null)
   return {
-    format: "khung-thoai-release-manifest",
+    format: "nixio-release-manifest",
     formatVersion: 1,
     appVersion: version ?? normalizeVersion(),
     sourceDateEpoch: epoch,

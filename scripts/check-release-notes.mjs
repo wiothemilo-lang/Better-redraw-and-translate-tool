@@ -2,7 +2,7 @@
 // carries is a dead link that nobody notices until someone clicks it. This collects the artifact
 // names the notes promise and fails when the assets directory does not have them.
 //
-// Only names count: prose such as "run `Khung-Thoai.exe` after unzipping" and bare suffixes like
+// Only names count: prose such as "run `Nixio.exe` after unzipping" and bare suffixes like
 // `.dmg` are skipped, and every artifact Nixio publishes carries its version in its name.
 import { readdir, readFile } from "node:fs/promises"
 import path from "node:path"

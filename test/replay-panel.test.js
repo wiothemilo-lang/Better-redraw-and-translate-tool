@@ -180,7 +180,7 @@ test("the replay panel lists recorded turns, replays one offline and highlights 
 
   assert.equal(panel.exportSelected(), true)
   assert.equal(writes.length, 1)
-  assert.equal(writes[0].filename, "khung-thoai-luot-turn-broken.json")
+  assert.equal(writes[0].filename, "nixio-luot-turn-broken.json")
   assert.ok(writes[0].blob)
 
   assert.equal(panel.clearAll(), true)

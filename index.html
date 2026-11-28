@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111418">
-  <title data-i18n="app.title">Khung Thoại — Biên tập trang truyện</title>
+  <title data-i18n="app.title">Nixio — Biên tập trang truyện</title>
   <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
   <p id="live-region" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
   <p id="live-region-alert" class="sr-only" role="alert" aria-atomic="true"></p>
   <header class="app-header">
-    <a class="wordmark" href="#editor" data-view="editor"><span>KT</span> Khung Thoại</a>
+    <a class="wordmark" href="#editor" data-view="editor"><span>N</span> Nixio</a>
     <nav aria-label="Không gian làm việc" data-i18n-aria-label="nav.workspace">
       <a href="#editor" data-view="editor" aria-current="page" data-i18n="nav.editor">Biên tập</a>
       <a href="#library" data-view="library" data-i18n="nav.library">Thư viện chương</a>
@@ -29,7 +29,7 @@
       <button type="button" class="button header-secondary" id="open-chat" aria-pressed="false" title="Mở Trợ lý AI Harness (Web Search &amp; công cụ biên tập)" data-i18n-title="header.chat.title" data-i18n="header.chat">Trợ lý AI</button>
       <button type="button" class="button header-secondary" id="open-find" title="Tìm và thay thế (Ctrl+H / Ctrl+F)" data-i18n-title="header.find.title" data-i18n="header.find">Tìm &amp; thay</button>
       <button type="button" class="button header-secondary" id="open-shortcuts" title="Phím tắt (?)" data-i18n-title="header.shortcuts.title" data-i18n="header.shortcuts">Phím tắt</button>
-      <button type="button" class="button header-secondary" id="check-update" title="Kiểm tra phiên bản mới của Khung Thoại" data-i18n-title="header.update.title" data-i18n="header.update">Cập nhật</button>
+      <button type="button" class="button header-secondary" id="check-update" title="Kiểm tra phiên bản mới của Nixio" data-i18n-title="header.update.title" data-i18n="header.update">Cập nhật</button>
       <button type="button" class="button header-secondary notif-btn" id="open-notifications" aria-expanded="false" aria-label="Trung tâm thông báo" data-i18n-aria-label="notifications.label" title="Trung tâm thông báo" data-i18n-title="notifications.label"><span data-i18n="notifications.title">Thông báo</span> <span id="notif-badge" class="notif-badge" hidden>0</span></button>
       <button type="button" class="button header-export" id="export-all" data-i18n="header.export">Xuất cả lượt</button>
     </div>
@@ -686,7 +686,7 @@
       </label>
       <p class="muted">Gói ảnh chia mảnh kèm <code>manifest.json</code> ghi thứ tự từng mảnh.</p>
       <label class="field" for="zip-name">Tên tệp ZIP (không bắt buộc)
-        <input id="zip-name" type="text" placeholder="khung-thoai" autocomplete="off" spellcheck="false">
+        <input id="zip-name" type="text" placeholder="nixio" autocomplete="off" spellcheck="false">
       </label>
       <div class="form-actions">
         <button value="cancel" class="button">Hủy</button>
@@ -813,7 +813,7 @@
   <div id="toast-container" class="toast-container" aria-live="polite" aria-relevant="additions"></div>
 
   <dialog id="update-dialog">
-    <h2 id="update-dialog-title">Cập nhật Khung Thoại</h2>
+    <h2 id="update-dialog-title">Cập nhật Nixio</h2>
     <p id="update-version-row" class="update-version-row muted"></p>
     <pre id="update-notes" class="update-notes"></pre>
     <div id="update-assets" class="update-assets" hidden></div>

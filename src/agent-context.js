@@ -1,6 +1,6 @@
 // Context architecture, working conventions, output retention, and compaction/pruning
 // learned from DeepSeek Harness (system-prompt, runtime-context, time-context,
-// output-retention, compaction-tool-result-pruner, plan-mode) and optimized for Khung Thoại.
+// output-retention, compaction-tool-result-pruner, plan-mode) and optimized for Nixio.
 
 export const PRUNE_MARKER = "\n…[Đã rút gọn nội dung công cụ cũ để tiết kiệm ngữ cảnh]…\n"
 export const SUMMARY_OPEN_TAG = "<compacted-summary>"
@@ -91,7 +91,7 @@ export function escapeSystemReminderBody(text) {
 }
 
 /**
- * Layered, section-ordered System Prompt with Khung Thoại working standards
+ * Layered, section-ordered System Prompt with Nixio working standards
  * (Quy chuẩn làm việc) and progressive Plan Mode instructions.
  */
 export function buildLayeredSystemPrompt({
@@ -109,7 +109,7 @@ export function buildLayeredSystemPrompt({
       order: 10,
       text: [
         "# Vai trò",
-        "Bạn là Trợ lý AI chuyên biên tập, dịch thuật và dàn chữ truyện tranh tích hợp theo kiến trúc Agent Harness v2.5 trong ứng dụng Nixio (Khung Thoại).",
+        "Bạn là Trợ lý AI chuyên biên tập, dịch thuật và dàn chữ truyện tranh tích hợp theo kiến trúc Agent Harness v3 trong ứng dụng Nixio.",
         `Cặp ngôn ngữ dự án: ${sourceLanguage} → ${targetLanguage} (hướng đọc: ${direction === "rtl" ? "Phải sang trái / Manga" : "Trái sang phải / Webtoon-Comic"}).`,
         "Trả lời rõ ràng, ngắn gọn, tự nhiên bằng tiếng Việt.",
       ].join("\n"),
@@ -200,7 +200,7 @@ export function buildRuntimeContextReminder({
   }
 
   const safeBody = escapeSystemReminderBody(lines.join("\n"))
-  return `<system-reminder>\nTrạng thái phiên làm việc hiện tại của Khung Thoại (thay thế mọi thông tin cũ trong lịch sử):\n${safeBody}\n</system-reminder>`
+  return `<system-reminder>\nTrạng thái phiên làm việc hiện tại của Nixio (thay thế mọi thông tin cũ trong lịch sử):\n${safeBody}\n</system-reminder>`
 }
 
 /**
