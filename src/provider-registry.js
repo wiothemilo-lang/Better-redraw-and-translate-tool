@@ -460,8 +460,21 @@ async function callOpenAiStep({ settings, thread, toolDefs, signal, stream = fal
     const resolveToolKey = (item) => {
       const byId = item.id ? "id:" + item.id : ""
       const byIndex = Number.isInteger(item.index) ? "i:" + item.index : ""
-      const known = (byId && toolAliases.get(byId)) || (byIndex && toolAliases.get(byIndex))
-      if (known) return known
+      const idKey = byId ? toolAliases.get(byId) : ""
+      const indexKey = byIndex ? toolAliases.get(byIndex) : ""
+      // A hint already bound to a slot is authoritative: parallel calls interleave by index.
+      if (idKey) return idKey
+      if (indexKey) return indexKey
+      const pending = pendingKey ? toolMap.get(pendingKey) : null
+      const startsCall = Boolean(item.function?.name)
+      // Servers can split one call's identity across fragments: "id" on the first, "index" only on
+      // the argument fragments. Attach an unknown hint to the open slot while that slot is still
+      // missing the same identity, instead of opening an orphan slot that the final filter drops.
+      // A fragment that starts a call by naming the function is always a new slot.
+      if (pending && !startsCall) {
+        if (byId && !pending.id) return pendingKey
+        if (byIndex && pending.index === undefined) return pendingKey
+      }
       return byId || byIndex || pendingKey || "tc:" + toolMap.size
     }
     await readSseEvents(response.body, (raw) => {
@@ -498,8 +511,9 @@ async function callOpenAiStep({ settings, thread, toolDefs, signal, stream = fal
           seen.add(key)
           aliasKey(item.id ? "id:" + item.id : "", key)
           aliasKey(Number.isInteger(item.index) ? "i:" + item.index : "", key)
-          const prev = toolMap.get(key) ?? { order: toolMap.size, id: "", name: "", argumentsText: "" }
+          const prev = toolMap.get(key) ?? { order: toolMap.size, id: "", index: undefined, name: "", argumentsText: "" }
           if (item.id) prev.id = item.id
+          if (Number.isInteger(item.index)) prev.index = item.index
           if (item.function?.name) prev.name += item.function.name
           if (typeof item.function?.arguments === "string") prev.argumentsText += item.function.arguments
           toolMap.set(key, prev)

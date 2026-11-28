@@ -433,6 +433,65 @@ test("runAgentTurn keeps streamed OpenAI tool_call arguments when deltas omit in
   assert.equal(result.toolTrace[0].data.matches.length, 1)
 })
 
+// Regression for #136: when the first fragment carried the id and the argument fragments carried
+// only the index, the index opened a second slot with no name, and the final filter dropped it, so
+// the call ran with empty arguments.
+test("streamed tool_call arguments survive id and index arriving in separate fragments", async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const encoder = new TextEncoder()
+  let call = 0
+  globalThis.fetch = async () => {
+    call++
+    if (call === 1) {
+      const chunks = [
+        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_a","type":"function","function":{"name":"search_chapter_text","arguments":""}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"query\\":"}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"こんにちは\\"}"}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":1,"type":"function","function":{"name":"list_boxes","arguments":"{"}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_b","function":{"arguments":"}"}}]}}]}\n\n',
+        "data: [DONE]\n\n",
+      ]
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        body: new ReadableStream({
+          start(controller) {
+            for (const line of chunks) controller.enqueue(encoder.encode(line))
+            controller.close()
+          },
+        }),
+      }
+    }
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({ choices: [{ message: { content: "Xong." } }] }),
+    }
+  }
+
+  const { tools } = makeHarnessContext()
+  const result = await runAgentTurn({
+    userMessage: "Tìm khung thoại chứa lời chào",
+    settings: {
+      provider: "openai",
+      baseUrl: "http://localhost:11434/v1",
+      llmModel: "qwen2.5:7b",
+      source: "Japanese",
+      target: "Vietnamese",
+    },
+    tools,
+    stream: true,
+  })
+  assert.equal(result.toolTrace.length, 2)
+  assert.equal(result.toolTrace[0].name, "search_chapter_text")
+  assert.deepEqual(result.toolTrace[0].args, { query: "こんにちは" })
+  assert.equal(result.toolTrace[1].name, "list_boxes")
+  assert.deepEqual(result.toolTrace[1].args, {})
+})
+
 test("runAgentTurn context budget counts the system prompt once per provider message shape", async (t) => {
   const originalFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = originalFetch })
