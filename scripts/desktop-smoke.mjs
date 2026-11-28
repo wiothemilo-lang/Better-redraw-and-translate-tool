@@ -133,10 +133,14 @@ try {
   await page.locator("#recover-project").waitFor({ state: "visible" })
   await page.locator("#recent-projects-button").click()
   await page.locator("#project-library").waitFor({ state: "visible" })
-  assert.match(await page.locator("#recent-projects").textContent(), /Khôi phục/)
+  // Opening the dialog is not the same as filling it: showLibrary awaits projectList(), and the
+  // previous render can stay in the DOM long enough to answer a text assertion with stale rows.
+  const restore = page.locator(`#recent-projects button[data-snapshot-id="${snapshotId}"]`)
+  await restore.waitFor({ state: "visible" })
+  assert.match(await restore.textContent(), /^Khôi phục /)
   const restoreButtons = page.locator("#recent-projects button[data-snapshot-id]")
   assert.equal(await restoreButtons.first().getAttribute("data-snapshot-id"), snapshotId)
-  await page.locator(`#recent-projects button[data-snapshot-id="${snapshotId}"]`).click()
+  await restore.click()
   await page.getByText("Đã mở dự án với 1 trang.").waitFor()
   assert.match(await page.locator("#boxes").textContent(), /Recover this latest edit/)
   assert.match(await page.locator("#project-dirty").textContent(), /Còn thay đổi/)
