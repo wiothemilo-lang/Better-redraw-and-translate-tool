@@ -14,10 +14,11 @@
 
 Khảo sát tối thiểu trước khi viết dòng đầu tiên:
 
-1. `git log --oneline -5` và `git status` — biết HEAD và không đè lên thay đổi chưa commit.
-2. `grep`/`glob` xem code đã có chưa; ưu tiên sửa chỗ đang có hơn tạo module mới.
-3. Đọc test của vùng sắp sửa — test là đặc tả hành vi hiện tại.
-4. Xác định đúng vùng: logic thuần ở `src/<module>.js`, DOM/điều phối ở `src/controllers/`, IPC/main ở `desktop/`, lõi ảnh ở `native/`, chuỗi ở `locales/`.
+1. **Đồng bộ với GitHub trước khi sửa bất cứ thứ gì.** Xem `git status` trước: nếu có thay đổi chưa commit thì commit hoặc stash có chủ đích, không pull chồng lên cây đang dở. Sau đó `git switch main && git pull --ff-only origin main`; đang ở nhánh riêng thì `git fetch origin && git rebase origin/main`. Không bắt đầu từ `main` cũ, không dùng `--force`/`reset --hard` khi pull lỗi — dừng và báo.
+2. `git log --oneline -5` — biết HEAD mới nhất và những commit vừa kéo về.
+3. `grep`/`glob` xem code đã có chưa; ưu tiên sửa chỗ đang có hơn tạo module mới.
+4. Đọc test của vùng sắp sửa — test là đặc tả hành vi hiện tại.
+5. Xác định đúng vùng: logic thuần ở `src/<module>.js`, DOM/điều phối ở `src/controllers/`, IPC/main ở `desktop/`, lõi ảnh ở `native/`, chuỗi ở `locales/`.
 
 ## 2. Bất biến kiến trúc — không được phá
 
@@ -63,6 +64,7 @@ Node 22.12+, `node:test` + `node:assert/strict`; tên test là câu mô tả hà
 ## 5. Commit & PR
 
 - Nhánh `<type>/<slug>` (`feat/`, `fix/`, `docs/`, `test/`, `chore/`), không push thẳng `main`, không force push.
+- Trước khi mở PR: rebase nhánh lên `origin/main` mới nhất; nếu rebase làm đổi mã thì chạy lại test ở §4.
 - Commit subject tiếng Anh, thể mệnh lệnh, ≤ 72 ký tự; body nêu **vì sao** và cách kiểm chứng.
 - Không commit `node_modules/`, `dist/`, `artifacts/`, `desktop-dist/`, `release-*`, `.env*`.
 - PR mô tả thay đổi, ảnh hưởng, và mục **Kiểm chứng** chép lệnh cùng số liệu thật.
@@ -95,6 +97,7 @@ Node 22.12+, `node:test` + `node:assert/strict`; tên test là câu mô tả hà
 
 ## 9. Definition of done
 
+- [ ] Đã `git pull --ff-only` từ `origin/main` trước khi bắt đầu và rebase trước khi mở PR.
 - [ ] `npm test` xanh; số liệu thật được ghi lại.
 - [ ] Test mới/sửa nằm cạnh hành vi, không mock quá mức.
 - [ ] Không có secret, path hay handle lọt ra renderer hoặc log.
