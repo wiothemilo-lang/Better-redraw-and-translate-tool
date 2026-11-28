@@ -10,7 +10,7 @@ These screenshots catch layout, theme and library regressions that unit tests ca
 | `editor-dark` | Same page, dark theme |
 | `library` | Library with the committed catalog fixture, one series selected |
 
-`npm run build` output is served by `vite preview` on `127.0.0.1:4173`, then headless Playwright Chromium renders each view with normal scrollbar geometry at 1280x800, device scale 1, locale `vi-VN`, reduced motion. Each view uses a fresh browser context, blocks every non-local request, disables CSS animations and transitions, disables IndexedDB so autosave and recovery state cannot appear, waits for `document.fonts.ready`, blurs the focused element and screenshots after two animation frames. The editor page is the committed `test/fixtures/comic/screentone.lettered.png` fixture; the library catalog points at the same committed file copied into the preview output. No network, clock, random, storage or canvas-text dependency is part of a baseline.
+`npm run build` output is served by `vite preview` on `127.0.0.1:4173`, then headless Playwright Chromium renders each view with normal scrollbar geometry at 1280x800, device scale 1, locale `vi-VN`, reduced motion, greyscale text (`--disable-lcd-text`) and the sRGB colour profile (`--force-color-profile=srgb`). Each view uses a fresh browser context, blocks every non-local request, disables CSS animations and transitions, disables IndexedDB so autosave and recovery state cannot appear, waits for `document.fonts.ready`, blurs the focused element and screenshots after two animation frames. The editor page is the committed `test/fixtures/comic/screentone.lettered.png` fixture; the library catalog points at the same committed file copied into the preview output. No network, clock, random, storage or canvas-text dependency is part of a baseline.
 
 ## Canonical environment
 
@@ -18,7 +18,7 @@ Baselines are supported on Linux x64 only: Node 24 and the Chromium build instal
 
 Windows and macOS are intentionally not calibrated: they have no committed baselines, and the comparison exits with a skip message instead of passing silently. `test/visual/config.json` holds the per-platform tolerance, so a platform becomes supported only when a baseline set is captured and reviewed there.
 
-The baselines in this repository were captured on Debian 13 with Playwright Chromium 159. The comparison has not been executed on a GitHub-hosted runner in this change, so the first CI run is the calibration check for the Ubuntu image; a diff there means the baseline or the environment needs review, not that the gate is wrong.
+The baselines in this repository were captured on Debian 13 with Playwright Chromium 159, and the Ubuntu runner compares against them with the same text and colour flags, so glyph rasterization stays independent of the host's fontconfig. Without `--disable-lcd-text` the runner drew LCD subpixel text where this machine draws greyscale: every glyph differed while layout, images and palette matched. A diff on CI now means the baseline or a real rendering change needs review, not that the gate is wrong.
 
 ## Tolerance
 

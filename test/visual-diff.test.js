@@ -126,3 +126,14 @@ test("CI compares visual baselines only on the canonical Linux environment and u
   assert.equal(manifest.scripts["test:visual:update"], "node scripts/visual-regression.mjs --update")
   assert.equal(manifest.scripts.test, "node --test")
 })
+
+test("visual capture pins text and colour rendering so a baseline is comparable across hosts", async () => {
+  const script = await readFile(path.join(root, "scripts/visual-regression.mjs"), "utf8")
+  // Greyscale text and a fixed colour profile keep glyph antialiasing out of the comparison: a
+  // host that draws LCD subpixel text differs on every glyph while layout, image and palette match.
+  assert.match(script, /--disable-lcd-text/)
+  assert.match(script, /--force-color-profile=srgb/)
+  assert.match(script, /args: launchArgs/)
+  assert.match(script, /launchArgs,\n\s+viewport: config\.viewport/)
+  assert.match(await readFile(path.join(root, "test/visual/README.md"), "utf8"), /--disable-lcd-text/)
+})

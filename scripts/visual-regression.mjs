@@ -114,12 +114,19 @@ const baselineDirectory = path.join(root, config.baselineDirectory, platform)
 const entries = []
 let failures = 0
 let browser
+// Text has to rasterize the same way on the machine that captures a baseline and on the one that
+// compares against it. Without these, a host whose fontconfig enables LCD subpixel antialiasing
+// draws coloured fringes on every glyph and a host without it draws greyscale, so a run on the
+// Ubuntu runner differed from a Debian-captured baseline in 35k pixels while every box, image and
+// colour matched. Forcing greyscale text and the sRGB profile removes that axis from the comparison.
+const launchArgs = ["--disable-lcd-text", "--force-color-profile=srgb"]
 try {
   browser = await chromium.launch({
     headless: true,
     // Keep scrollbar geometry identical in headless and desktop captures.
     ignoreDefaultArgs: ["--hide-scrollbars"],
     executablePath: process.env.VISUAL_CHROMIUM_PATH || undefined,
+    args: launchArgs,
   })
   await mkdir(artifactDirectory, { recursive: true })
   await rm(path.join(artifactDirectory, "report.json"), { force: true })
@@ -159,6 +166,7 @@ try {
   await writeFile(path.join(artifactDirectory, "report.json"), JSON.stringify({
     platform,
     browser: browser.version(),
+    launchArgs,
     viewport: config.viewport,
     deviceScaleFactor: config.deviceScaleFactor ?? 1,
     update,

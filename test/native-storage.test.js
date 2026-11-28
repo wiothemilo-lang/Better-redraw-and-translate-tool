@@ -24,13 +24,16 @@ import JSZip from "jszip"
  * Failure injection uses only controlled filesystem conditions. POSIX can unlink a file the
  * worker still holds open, which makes the reopen and the atomic replacement fail exactly
  * where the real error would. A second worker runs through a `ulimit -f` wrapper so a real
- * page write fails with EFBIG mid-archive. Windows denies both, so those cases skip there.
+ * page write fails with EFBIG mid-archive; the same wrapper fails a project write on Linux,
+ * while Darwin accepts that append under the limit and the project case skips there. Windows
+ * denies both, so those cases skip there.
  */
 
 const { available, executable } = nativeWorker()
 const unavailable = !available && "Native worker is not built; run `npm run desktop:native`."
 const posixOnly = process.platform === "win32" && "Windows cannot unlink a file the worker holds open."
 const shellOnly = process.platform === "win32" && "The injection needs a POSIX shell file-size limit."
+const notLinux = process.platform !== "linux" && "Only Linux reports this file-size limit at the project append; Darwin accepts the write there."
 const notRoot = process.getuid?.() === 0 && "A root user can read a file without permissions."
 
 const sample = async (worker) => (await worker.call("png", { width: 2, height: 2, patches: [] },
@@ -76,13 +79,13 @@ test("native ZIP page limit counts written pages and keeps accepting valid pages
   assert.deepEqual(await readdir(directory), ["chapter.zip"])
 })
 
-test("a real write failure blocks commit and preserves the previous destination", { skip: unavailable || shellOnly }, async (t) => {
+test("a real archive write failure blocks commit and preserves the previous archive", { skip: unavailable || shellOnly }, async (t) => {
   const worker = new native.NativeWorker(executable)
   const directory = await mkdtemp(path.join(os.tmpdir(), "khung-thoai-write-damage-"))
   const wrapper = path.join(directory, "limited-worker.sh")
   // The limit has to sit well above what the runtime itself needs, or the runtime aborts with
   // "Out of memory" before the write under test happens (4 MiB was enough to do that). 32 MiB
-  // leaves that headroom and still refuses a 64 MiB page or project chunk.
+  // leaves that headroom and still refuses a 64 MiB page.
   await writeFile(wrapper, `#!/bin/sh\ntrap '' XFSZ\nulimit -f 65536\nexec "${executable}" "$@"\n`)
   await chmod(wrapper, 0o755)
   const limited = new native.NativeWorker(wrapper)
@@ -103,20 +106,36 @@ test("a real write failure blocks commit and preserves the previous destination"
   )
   await assert.rejects(limited.call("fileCommit", { id: transfer.result.id }), /temporary archive is incomplete/)
   assert.deepEqual(await readFile(target), original)
+  const retry = await limited.call("zipBegin", { path: path.join(directory, "retry.zip") })
+  await limited.call("zipAppend", { id: retry.result.id, name: "01.png" }, pngHeader)
+  await limited.call("fileCommit", { id: retry.result.id })
+  assert.deepEqual(await temporaryNames(directory), [])
+  assert.deepEqual((await readdir(directory)).sort(), ["chapter.zip", "limited-worker.sh", "retry.zip"])
+})
+
+test("a real project write failure blocks commit and preserves the previous project", { skip: unavailable || shellOnly || notLinux }, async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "khung-thoai-project-damage-"))
+  const wrapper = path.join(directory, "limited-worker.sh")
+  // Same 32 MiB limit as the archive case, and the same reason it sits far above what the
+  // runtime needs of its own budget. Here the project write fails at the append, so no publish
+  // is reached and the previous project has to survive untouched.
+  await writeFile(wrapper, `#!/bin/sh\ntrap '' XFSZ\nulimit -f 65536\nexec "${executable}" "$@"\n`)
+  await chmod(wrapper, 0o755)
+  const limited = new native.NativeWorker(wrapper)
+  t.after(async () => { limited.close(); await rm(directory, { recursive: true, force: true }) })
+  if (!await limited.call("preprocess", { width: 2, height: 2, scale: 1 }, Buffer.alloc(16, 128)).then(() => true, () => false))
+    return t.skip("The native worker needs more than the 32 MiB file size limit to start.")
   const project = path.join(directory, "chapter.khungthoai")
-  const first = await worker.call("fileBegin", { path: project, backup: true })
-  await worker.call("fileAppend", { id: first.result.id }, Buffer.from("valid project"))
-  await worker.call("fileCommit", { id: first.result.id })
+  const first = await limited.call("fileBegin", { path: project, backup: true })
+  await limited.call("fileAppend", { id: first.result.id }, Buffer.from("valid project"))
+  await limited.call("fileCommit", { id: first.result.id })
   const saved = await readFile(project)
   const damaged = await limited.call("fileBegin", { path: project, backup: true })
   await assert.rejects(limited.call("fileAppend", { id: damaged.result.id }, Buffer.alloc(64 * 1024 * 1024)), /Could not write the project file/)
   await assert.rejects(limited.call("fileCommit", { id: damaged.result.id }), /temporary file is incomplete/)
   assert.deepEqual(await readFile(project), saved)
-  const retry = await limited.call("zipBegin", { path: path.join(directory, "retry.zip") })
-  await limited.call("zipAppend", { id: retry.result.id, name: "01.png" }, pngHeader)
-  await limited.call("fileCommit", { id: retry.result.id })
   assert.deepEqual(await temporaryNames(directory), [])
-  assert.deepEqual((await readdir(directory)).sort(), ["chapter.khungthoai", "chapter.zip", "limited-worker.sh", "retry.zip"])
+  assert.deepEqual((await readdir(directory)).sort(), ["chapter.khungthoai", "limited-worker.sh"])
 })
 
 test("a damaged temporary archive never replaces a valid destination", { skip: unavailable || posixOnly }, async (t) => {
