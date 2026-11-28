@@ -509,6 +509,17 @@ test("a reflected key is redacted, including across chunk boundaries", async () 
   assert.equal(whole.includes(OPENAI_KEY), false)
   assert.equal(whole, "prefix [redacted] suffix")
   assert.equal(new SecretRedactor(null).push("nothing to hide"), "nothing to hide")
+
+  // Regression for #138: any key longer than the fixed prefix window used to put the redactor in a
+  // hold-everything mode, so the first frame never reached the renderer and the whole stream arrived
+  // at flush. A long key is still redacted across frames, and unrelated text passes straight through.
+  const longKey = "AIza" + "A".repeat(400) + "TAIL"
+  const longRedactor = new SecretRedactor(longKey)
+  assert.equal(longRedactor.push("hello"), "hello", "a long key must not hold every frame back")
+  const longHead = longRedactor.push("x" + longKey.slice(0, 200))
+  assert.equal(longHead, "x", "the partial key is held, the text before it is not")
+  const longTail = longRedactor.push(longKey.slice(200) + " done")
+  assert.equal(longHead + longTail + longRedactor.flush(), "x[redacted] done")
 })
 
 test("cancellation only reaches the exchange its own sender opened", async () => {

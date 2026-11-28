@@ -59,8 +59,8 @@ const MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 const MAX_STREAM_BYTES = 8 * 1024 * 1024
 const MAX_STREAM_CHUNKS = 20000
 const MAX_RETRY_AFTER_MS = 15000
-// Longest suffix of a frame that is held back while a secret prefix could still be forming.
-const MAX_PREFIX_SCAN = 256
+// Base of the rolling hash the redactor uses to test a held-back suffix against a secret prefix.
+const REDACTOR_HASH_BASE = 0x01000193
 const REQUEST_TIMEOUT_MS = 120000
 const STREAM_IDLE_TIMEOUT_MS = 120000
 const STREAM_TOTAL_TIMEOUT_MS = 600000
@@ -181,14 +181,25 @@ function encodedSecretForms(secret) {
   return [...forms].filter((form) => form.length >= 8)
 }
 
+// Prefix hashes of one form, oriented with the first character carrying the highest power. A suffix of
+// the frame is hashed the same way, so testing "is this suffix a prefix of that form" is one array
+// comparison per length instead of a substring comparison per candidate.
+function prefixHashes(form) {
+  const hashes = new Uint32Array(form.length + 1)
+  let hash = 0
+  for (let index = 0; index < form.length; index++) {
+    hash = (Math.imul(hash, REDACTOR_HASH_BASE) + form.charCodeAt(index)) >>> 0
+    hashes[index + 1] = hash
+  }
+  return hashes
+}
+
 class SecretRedactor {
   constructor(secret) {
     this.secret = typeof secret === "string" && secret ? secret : null
     this.forms = [this.secret, ...encodedSecretForms(this.secret)].filter(Boolean)
     this.window = this.forms.reduce((longest, form) => Math.max(longest, form.length), 0)
-    // A "key" longer than the scan window would make the suffix search unbounded, so such a value is
-    // held back whole and emitted only once at flush.
-    this.holdAll = Boolean(this.window && this.window - 1 > MAX_PREFIX_SCAN)
+    this.prefixes = this.forms.map(prefixHashes)
     this.tail = ""
   }
 
@@ -198,16 +209,20 @@ class SecretRedactor {
   }
 
   // Longest suffix of `text` that is a proper prefix of the secret or of one of its encodings, so it is
-  // held back until it can be shown not to complete one.
+  // held back until it can be shown not to complete one. The hash only shortlists a length; the
+  // `endsWith` check keeps a collision from holding back the wrong suffix, and a secret of any length
+  // costs one pass instead of a quadratic scan.
   holdback(text) {
-    if (this.holdAll) return text.length
+    const limit = Math.min(text.length, this.window - 1)
+    if (limit <= 0) return 0
     let longest = 0
-    for (const form of this.forms) {
-      const limit = Math.min(form.length - 1, text.length, this.window - 1)
-      for (let size = limit; size > longest; size--) {
-        if (text.charCodeAt(text.length - size) !== form.charCodeAt(0)) continue
-        if (text.endsWith(form.slice(0, size))) { longest = size; break }
-      }
+    let hash = 0
+    let power = 1
+    for (let size = 1; size <= limit; size++) {
+      hash = (hash + Math.imul(text.charCodeAt(text.length - size), power)) >>> 0
+      power = Math.imul(power, REDACTOR_HASH_BASE) >>> 0
+      const shortlisted = this.prefixes.some((prefixes) => prefixes[size] === hash)
+      if (shortlisted && this.forms.some((form) => text.endsWith(form.slice(0, size)))) longest = size
     }
     return longest
   }
