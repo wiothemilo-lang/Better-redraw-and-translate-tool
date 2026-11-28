@@ -488,18 +488,23 @@ test("an open warning gates the export and continuing records the override as a 
   }
   const state = { pages: [page], queue: [], exporting: false, openingProject: false }
   const store = createQaReviewStore()
+  let changed = 0
   const { setupExports } = await controllers("export")
   setupExports({
     ...baseArguments(byId, state),
     readTranslationSettings: () => ({}),
     qaReview: store,
+    changed: () => { changed++ },
   })
 
   byId("check-export").onclick()
   assert.equal(byId("continue-export").textContent, "Duyệt cảnh báo & xuất")
+  assert.equal(changed, 0, "opening the board changes nothing")
   byId("continue-export").onclick()
   assert.equal(store.entry("1:0:empty_or_placeholder").state, "accepted")
   assert.equal(store.entry("1:0:empty_or_placeholder").note, qaExportOverrideNote)
+  // Regression for #140: the override has to mark the project dirty or the acceptances are never saved.
+  assert.equal(changed, 1, "recording the override is an unsaved change")
   assert.equal(byId("preflight-dialog").open, false)
 
   // The decision is visible the next time the board opens, so the gate no longer counts the row.

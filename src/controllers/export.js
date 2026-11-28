@@ -407,9 +407,14 @@ export function setupExports({
     const action = pendingExport
     // An export that goes ahead with open warnings records the decision on those rows, so the
     // override is a note on the board and not a dismissed dialog.
+    let recorded = false
     for (const finding of qaBlockingFindings(board.findings)) {
-      qaReview?.set?.(finding.id, { state: "accepted", note: qaExportOverrideNote, boxStamp: finding.boxStamp })
+      const result = qaReview?.set?.(finding.id, { state: "accepted", note: qaExportOverrideNote, boxStamp: finding.boxStamp })
+      if (result && !result.error) recorded = true
     }
+    // The override is project data: without this the file never turns dirty and the next autosave
+    // skips the acceptances, so the next export blocks on warnings the user already approved.
+    if (recorded) changed?.()
     preflightDialog.close()
     action?.()
   }
