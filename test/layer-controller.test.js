@@ -197,6 +197,30 @@ test("a stroke can be selected, hidden, deleted and moved to another layer", () 
   assert.equal(rows(harness, "stroke-list").length, 1)
 })
 
+// Regression for #143: the key used to be the row index, so removing stroke #1 handed the caret to
+// whichever stroke slid into slot 0 and a second Enter deleted that one instead of nothing.
+test("a stroke keeps its focus key when an earlier stroke is deleted", () => {
+  const harness = createHarness()
+  for (const x of [.1, .3, .5]) addStroke(harness.page, { mode: "paint", size: .05, points: [{ x, y: .1 }] })
+  harness.layers.sync()
+  const keys = (index) => rows(harness, "stroke-list")[index].children.map((child) => child.dataset.focusKey)
+  const [firstPick, , firstRemove] = keys(0)
+  const second = keys(1)
+  const selected = harness.page.retouchStrokes[1]
+  harness.state.stroke = selected
+  harness.layers.sync()
+  assert.equal(rows(harness, "stroke-list")[1].children.length, 4, "the selected row carries the layer picker")
+  const secondWithPicker = keys(1)
+
+  rows(harness, "stroke-list")[0].children[2].onclick()
+  assert.equal(rows(harness, "stroke-list").length, 2)
+  assert.deepEqual(keys(0), secondWithPicker, "the surviving stroke keeps every key it had")
+  assert.equal(keys(0).includes(firstPick), false)
+  assert.equal(keys(0).includes(firstRemove), false)
+  assert.equal(keys(1).some((key) => second.includes(key)), false, "the next stroke keeps its own keys")
+  assert.equal(keys(1).includes(firstPick), false)
+})
+
 test("a busy editor refuses layer edits and the original scan is one click away", () => {
   const harness = createHarness({ busy: true })
   harness.page.originalFile = { name: "scan.png" }

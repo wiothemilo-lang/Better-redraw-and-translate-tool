@@ -26,6 +26,21 @@ function layerActionIcon(kind) {
   return svg
 }
 
+// Focus keys name the object, never its row: deleting one stroke shifts every later row up, so an
+// index-key would hand the caret to the next stroke's control when the list is rebuilt. The stroke
+// objects survive undo/redo and re-renders, so a WeakMap token stays stable for their lifetime.
+const strokeTokens = new WeakMap()
+let nextStrokeToken = 0
+
+function strokeToken(stroke) {
+  let token = strokeTokens.get(stroke)
+  if (!token) {
+    token = (++nextStrokeToken).toString(36)
+    strokeTokens.set(stroke, token)
+  }
+  return token
+}
+
 // The layer stack and the strokes inside it are edited here. Each change is recorded as a named
 // action — with the snapshot taken before the change — so the timeline can step back through a
 // rename, a reorder or one deleted stroke.
@@ -175,19 +190,19 @@ export function setupLayers({
     pick.className = "stroke-pick"
     pick.textContent = strokeLabel(stroke, index, (stroke.size ?? 0) * minDimension) + badge
     pick.setAttribute("aria-label", `Chọn nét ${index + 1}`)
-    pick.dataset.focusKey = "stroke-pick:" + index
+    pick.dataset.focusKey = "stroke-pick:" + strokeToken(stroke)
     pick.onclick = () => {
       state.stroke = selected ? null : stroke
       render()
     }
 
-    const eye = actionButton(stroke.hidden === true ? "Hiện" : "Ẩn", `${stroke.hidden === true ? "Hiện" : "Ẩn"} nét ${index + 1}`, "stroke-visible:" + index,
+    const eye = actionButton(stroke.hidden === true ? "Hiện" : "Ẩn", `${stroke.hidden === true ? "Hiện" : "Ẩn"} nét ${index + 1}`, "stroke-visible:" + strokeToken(stroke),
       () => edit(
         `${stroke.hidden === true ? "Hiện" : "Ẩn"} nét cọ #${index + 1}`,
         () => setStrokeHidden(stroke, stroke.hidden !== true),
         `Đã ${stroke.hidden === true ? "hiện" : "ẩn"} nét cọ #${index + 1}.`,
       ))
-    const remove = actionButton("×", `Xoá nét ${index + 1}`, "stroke-remove:" + index,
+    const remove = actionButton("×", `Xoá nét ${index + 1}`, "stroke-remove:" + strokeToken(stroke),
       () => edit(`Xoá nét cọ #${index + 1}`, () => removeStroke(page, stroke), `Đã xoá nét cọ #${index + 1}.`))
 
     li.append(pick, eye, remove)
@@ -195,7 +210,7 @@ export function setupLayers({
       const select = document.createElement("select")
       select.className = "stroke-layer"
       select.disabled = projectBusy() || retouchLayers(page).length < 2
-      select.dataset.focusKey = "stroke-layer:" + index
+      select.dataset.focusKey = "stroke-layer:" + strokeToken(stroke)
       select.setAttribute("aria-label", `Lớp của nét ${index + 1}`)
       select.replaceChildren(...retouchLayers(page).map((layer) => {
         const option = document.createElement("option")
