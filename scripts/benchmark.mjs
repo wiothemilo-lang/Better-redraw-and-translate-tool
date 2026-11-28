@@ -75,7 +75,8 @@ export async function benchmark() {
         report.redraw.push({
           pair: pair.id, id: item.id, beforeMae: before / Math.max(1, count * 3), afterMae: after / Math.max(1, count * 3),
           backgroundChangeRate: changedBackground / Math.max(1, background), milliseconds,
-          maxMae: item.maxMae, maxBackgroundChangeRate, conservative: item.conservative ?? false,
+          maxMae: item.maxMae, maxImprovement: item.maxImprovement,
+          maxBackgroundChangeRate, conservative: item.conservative ?? false,
         })
       }
     }
@@ -94,6 +95,32 @@ export async function benchmark() {
   } finally { worker.close() }
 }
 
+// A conservative case is the worker's licence to do nothing: its lettering error must stay where the
+// unredrawn page put it. Grading those cases only by background change let a guessed patch improve the
+// error and still pass, which is the opposite of deferring (#147). `maxImprovement` is in MAE units.
+export function benchmarkRegressions(report) {
+  const failures = []
+  for (const item of report?.redraw ?? []) {
+    const id = `${item.pair}/${item.id}`
+    if (item.backgroundChangeRate > item.maxBackgroundChangeRate) {
+      failures.push(`${id}: background change ${item.backgroundChangeRate} > ${item.maxBackgroundChangeRate}`)
+    }
+    if (item.conservative) {
+      const change = Math.abs(item.beforeMae - item.afterMae)
+      if (!Number.isFinite(item.maxImprovement)) failures.push(`${id}: a conservative case needs maxImprovement`)
+      else if (change > item.maxImprovement) {
+        failures.push(`${id}: conservative case changed lettering MAE by ${change.toFixed(3)} > ${item.maxImprovement}`)
+      }
+    } else if (!Number.isFinite(item.maxMae) || item.afterMae > item.maxMae) {
+      failures.push(`${id}: lettering MAE ${item.afterMae} > ${item.maxMae}`)
+    }
+  }
+  for (const item of report?.ocr ?? []) {
+    if (item.cer !== undefined && item.cer > item.maxCer) failures.push(`${item.id}: OCR CER ${item.cer} > ${item.maxCer}`)
+  }
+  return failures
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const report = await benchmark()
   const index = process.argv.indexOf("--output")
@@ -103,7 +130,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     await writeFile(target, JSON.stringify(report, null, 2) + "\n")
   }
   console.log(JSON.stringify(report, null, 2))
-  if (report.redraw.some((item) => item.maxMae !== undefined && item.afterMae > item.maxMae) ||
-      report.redraw.some((item) => item.backgroundChangeRate > item.maxBackgroundChangeRate) ||
-      report.ocr.some((item) => item.cer !== undefined && item.cer > item.maxCer)) process.exitCode = 1
+  const failures = benchmarkRegressions(report)
+  if (failures.length) {
+    console.error(failures.join("\n"))
+    process.exitCode = 1
+  }
 }

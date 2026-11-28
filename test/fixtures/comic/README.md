@@ -20,7 +20,7 @@ The synthetic pairs are fully opaque (alpha 255) and place their lettering insid
 
 - `maxMae` is the mean absolute channel error over lettered pixels after redraw. The greenhouse pair measured 1.07 on Linux x64 and keeps its original 8. The synthetic pairs measured 0.000 (screentone) and 0.003 (gradient), so they use 4. Unredrawn lettering measures 124-195 MAE, so these limits still fail loudly.
 - `thresholds.maxBackgroundChangeRate` is 0.005: at most 0.5% of non-lettered pixels inside a graded rectangle may change by more than 2 levels per channel. Every committed ground-truth run measured exactly 0.
-- The two conservative greenhouse cases have no `maxMae`; they must keep reporting their unchanged error rather than being graded as restored.
+- The two conservative greenhouse cases have no `maxMae`; they carry `maxImprovement: 0.5` instead. The gate fails when their lettering MAE moves by more than 0.5, either way, so a guessed patch cannot pass by improving the error while the worker was supposed to defer.
 
 Raising a threshold requires the measured image difference and an explanation next to the change.
 

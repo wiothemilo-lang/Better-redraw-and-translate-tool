@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises"
 import { spawnSync } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { benchmark, characterErrorRate } from "../scripts/benchmark.mjs"
+import { benchmark, benchmarkRegressions, characterErrorRate } from "../scripts/benchmark.mjs"
 import { nativeWorker } from "../scripts/native-worker.mjs"
 import { decodePng } from "../scripts/lib/png.mjs"
 
@@ -45,7 +45,12 @@ test("the ground-truth manifest covers screentone and gradient with explained th
     assert.ok(pair.cases.length > 0)
     for (const item of pair.cases) {
       assert.ok(!item.conservative || item.maxMae === undefined, pair.id + "/" + item.id)
-      if (!item.conservative) assert.ok(item.maxMae > 0 && item.maxMae <= 8, pair.id + "/" + item.id + " needs a measured maxMae")
+      if (item.conservative) {
+        assert.ok(Number.isFinite(item.maxImprovement) && item.maxImprovement >= 0,
+          pair.id + "/" + item.id + " needs a maxImprovement so a guessed patch cannot pass")
+      } else {
+        assert.ok(item.maxMae > 0 && item.maxMae <= 8, pair.id + "/" + item.id + " needs a measured maxMae")
+      }
       const { left, top, right, bottom } = item.rect
       assert.ok(left >= 0 && top >= 0 && right <= pair.width && bottom <= pair.height, pair.id + "/" + item.id + " rect is outside the page")
       assert.ok(right > left && bottom > top)
@@ -70,6 +75,36 @@ test("the synthetic fixtures are reproducible from their generator", () => {
 test("OCR character error handles Unicode and whitespace", () => {
   assert.equal(characterErrorRate("こんにちは", "こ んにちは"), 0)
   assert.equal(characterErrorRate("abc", "axc"), 1 / 3)
+})
+
+// Regression for #147: conservative cases have no maxMae, so the old gate never looked at them and a
+// worker that guessed on a hard background could improve the error without failing CI.
+test("a conservative case fails when the worker guesses instead of deferring", () => {
+  const redraw = (overrides = {}) => ({
+    pair: "greenhouse",
+    id: "irregular-jacket",
+    beforeMae: 40,
+    afterMae: 40,
+    maxMae: undefined,
+    maxImprovement: 0.5,
+    backgroundChangeRate: 0,
+    maxBackgroundChangeRate: 0.005,
+    conservative: true,
+    ...overrides,
+  })
+  const report = (overrides = {}) => ({ redraw: [redraw(overrides)], ocr: [] })
+
+  assert.deepEqual(benchmarkRegressions(report()), [])
+  assert.equal(benchmarkRegressions(report({ afterMae: 39.6 })).length, 0, "sub-threshold noise still defers")
+  assert.match(benchmarkRegressions(report({ afterMae: 12 })).join("\n"), /conservative case changed lettering MAE by 28\.000/)
+  assert.match(benchmarkRegressions(report({ afterMae: 45 })).join("\n"), /changed lettering MAE by 5\.000/)
+  assert.match(benchmarkRegressions(report({ maxImprovement: undefined })).join("\n"), /needs maxImprovement/)
+  assert.match(benchmarkRegressions(report({ backgroundChangeRate: 0.01 })).join("\n"), /background change/)
+
+  const graded = { redraw: [redraw({ conservative: false, maxMae: 4, maxImprovement: undefined, afterMae: 5 })], ocr: [] }
+  assert.match(benchmarkRegressions(graded).join("\n"), /lettering MAE 5 > 4/)
+  const ocr = { redraw: [], ocr: [{ id: "english", cer: 0.2, maxCer: 0.15 }] }
+  assert.match(benchmarkRegressions(ocr).join("\n"), /OCR CER 0\.2 > 0\.15/)
 })
 
 test("the redraw benchmark times only the native call, not the pixel comparison", async () => {
