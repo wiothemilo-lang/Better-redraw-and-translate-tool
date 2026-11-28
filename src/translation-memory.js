@@ -208,6 +208,7 @@ function insertEntry(memory, entry) {
 // reviewed pair is only evicted when nothing else is left — the manifest refuses more than the limit,
 // so failing to trim would turn every later save into an invalid-project error.
 export function pruneTranslationMemory(memory, limit = translationMemoryEntryLimit) {
+  let evicted = 0
   while (memory.entries.length > limit) {
     let oldest = -1
     for (const [index, candidate] of memory.entries.entries()) {
@@ -222,8 +223,17 @@ export function pruneTranslationMemory(memory, limit = translationMemoryEntryLim
       }
     }
     memory.entries.splice(oldest, 1)
+    evicted++
   }
-  return memory
+  if (evicted) {
+    // A session counter, not project data: non-enumerable, so snapshots and manifests never save it.
+    Object.defineProperty(memory, "evicted", {
+      value: (memory.evicted ?? 0) + evicted,
+      configurable: true,
+      enumerable: false,
+    })
+  }
+  return evicted
 }
 
 // Records the pair the provider produced, or the pair a human confirmed when `reviewed` is set.
@@ -408,6 +418,9 @@ export function createTranslationMemoryStore(initial) {
     },
     get size() {
       return memory.entries.length
+    },
+    get evicted() {
+      return memory.evicted ?? 0
     },
     memory() {
       return memory

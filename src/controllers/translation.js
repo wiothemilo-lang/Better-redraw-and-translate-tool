@@ -10,6 +10,7 @@ import {
   boxStyleSignature,
   createTranslationMemoryStore,
   normalizeSourceText,
+  translationMemoryEntryLimit,
   translationMemoryScope,
 } from "../translation-memory.js"
 import {
@@ -296,9 +297,13 @@ export function setupTranslation({
     const summary = memory.summary(memoryScope())
     const page = selectedPage()
     const suggestions = page ? pageMemoryPlan(page).suggestions.length : 0
+    // Reaching the cap is data loss the user did not ask for; say how many pairs the store dropped
+    // instead of letting the new count hide it behind a number that never changes.
+    const evicted = memory.evicted ?? 0
     byId("translation-memory-status").textContent = summary.total
       ? `Bộ nhớ dịch: ${summary.total} cặp đã lưu (${summary.reviewed} cặp đã duyệt)` +
-        (suggestions ? ` · ${suggestions} gợi ý từ bộ nhớ cho trang này.` : ".")
+        (suggestions ? ` · ${suggestions} gợi ý từ bộ nhớ cho trang này.` : ".") +
+        (evicted ? ` Đã bỏ ${evicted} cặp cũ để giữ giới hạn ${translationMemoryEntryLimit}.` : "")
       : "Bộ nhớ dịch: chưa có cặp nào trong dự án."
     const button = byId("use-approved-translation")
     button.disabled = !suggestions || projectBusy()

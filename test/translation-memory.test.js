@@ -230,7 +230,10 @@ test("the store stays within its cap when every pair was reviewed", () => {
       page: "", style: "", reviewed: true, confidence: 1, hits: 0, createdAt: index, updatedAt: index,
     })),
   }
-  pruneTranslationMemory(memory)
+  const evicted = pruneTranslationMemory(memory)
+  assert.equal(evicted, 5)
+  assert.equal(memory.evicted, 5)
+  assert.equal(JSON.stringify(memory).includes("evicted"), false, "the session counter is not project data")
   assert.equal(memory.entries.length, translationMemoryEntryLimit)
   assert.equal(memory.entries.some((entry) => entry.id === "e0"), false, "the least recently touched pair goes")
   // Writing the trimmed store is accepted; the untrimmed one is the failure the issue reported.
@@ -249,6 +252,8 @@ test("recording after the cap evicts instead of growing past it", () => {
   })
   store.record({ source: "new", target: "mới" }, { scope }, { now: translationMemoryEntryLimit + 1, reviewed: true })
   assert.equal(store.size, translationMemoryEntryLimit)
+  assert.equal(store.evicted, 1, "the panel can explain the pair that made room")
+  assert.equal(Object.keys(store.snapshot()).includes("evicted"), false)
   assert.equal(store.memory().entries.some((entry) => entry.source === "new"), true)
 })
 
