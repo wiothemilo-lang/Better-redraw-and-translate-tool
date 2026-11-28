@@ -107,16 +107,36 @@ try {
   assert.match(zipPath, /khung-thoai-goc\.zip$/)
   const zip = await JSZip.loadAsync(await readFile(zipPath))
   assert.deepEqual(Object.keys(zip.files), ["01-01.png", "manifest.json"])
+  // The status line still names the previous heartbeat's save, so its text is only meaningful
+  // together with a snapshot id that is newer than the one captured just before this edit.
+  const beforeAutosave = await page.evaluate(async () => {
+    const [project] = await window.khungThoaiDesktop.projectList()
+    return {
+      projectId: project?.id ?? null,
+      snapshotId: project?.snapshots?.[0]?.id ?? null,
+      status: document.getElementById("autosave-status").textContent,
+    }
+  })
   await page.locator("#box-text").fill("Recover this latest edit")
   await page.locator("#box-form button[type=submit]").click()
-  // The timer makes a project-specific snapshot, then the library opens it through the normal path.
-  await page.locator("#autosave-status").filter({ hasText: "Đã tự lưu lúc" }).waitFor({ timeout: 30000 })
+  const snapshotId = await page
+    .waitForFunction(async (before) => {
+      const projects = await window.khungThoaiDesktop.projectList()
+      const project = projects.find((item) => item.id === before.projectId) ?? projects[0]
+      const latest = project?.snapshots?.[0]
+      const status = document.getElementById("autosave-status").textContent
+      return latest && latest.id !== before.snapshotId &&
+        status.includes("Đã tự lưu lúc") && status !== before.status ? latest.id : false
+    }, beforeAutosave, { timeout: 30000 })
+    .then((handle) => handle.jsonValue())
   await page.reload()
   await page.locator("#recover-project").waitFor({ state: "visible" })
   await page.locator("#recent-projects-button").click()
   await page.locator("#project-library").waitFor({ state: "visible" })
   assert.match(await page.locator("#recent-projects").textContent(), /Khôi phục/)
-  await page.locator("#recent-projects button").filter({ hasText: "Khôi phục" }).first().click()
+  const restoreButtons = page.locator("#recent-projects button[data-snapshot-id]")
+  assert.equal(await restoreButtons.first().getAttribute("data-snapshot-id"), snapshotId)
+  await page.locator(`#recent-projects button[data-snapshot-id="${snapshotId}"]`).click()
   await page.getByText("Đã mở dự án với 1 trang.").waitFor()
   assert.match(await page.locator("#boxes").textContent(), /Recover this latest edit/)
   assert.match(await page.locator("#project-dirty").textContent(), /Còn thay đổi/)

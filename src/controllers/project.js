@@ -394,6 +394,9 @@ export function setupProjects({
           if (busy) restore.title = busyReason
           restore.textContent =
             "Khôi phục " + new Date(snapshot.updatedAt).toLocaleString(dateLocale(locale()))
+          // The label is a locale time, which is ambiguous within a second; the id names the exact
+          // revision the button opens, for the recovery smoke test and for assistive tooling.
+          restore.dataset.snapshotId = snapshot.id
           restore.onclick = () => {
             byId("project-library").close()
             openNativeProject({
