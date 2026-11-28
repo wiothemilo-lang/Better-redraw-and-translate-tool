@@ -22,3 +22,16 @@ test("the desktop smoke test listens for renderer errors before the first window
   assert.equal(source.match(/pageerror/g).length, 1)
   assert.match(source, /assert\.deepEqual\(errors, \[\]\)/)
 })
+
+test("the desktop smoke test cannot hold a job open after it passes or hangs", async () => {
+  // macOS keeps the app alive after the last window closes, so a successful run wrote its artifact
+  // and then sat there until the 25 minute job timeout. The successful exit is explicit, the
+  // teardown is bounded and the run has its own watchdog.
+  const source = await readFile(path.join(root, "scripts/desktop-smoke.mjs"), "utf8")
+  assert.match(source, /const watchdog = setTimeout\(/)
+  assert.match(source, /watchdog\.unref\(\)/)
+  assert.match(source, /Promise\.race\(\[\n\s+app\.close\(\)/)
+  assert.match(source, /application\.kill\("SIGKILL"\)/)
+  assert.match(source, /clearTimeout\(watchdog\)/)
+  assert.match(source, /process\.exit\(0\)/)
+})

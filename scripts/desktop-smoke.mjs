@@ -39,6 +39,14 @@ async function waitForArtifact(read, description) {
   }
   throw new Error("Timed out waiting for " + description)
 }
+// Playwright bounds locators and navigation but not app.evaluate or a page.evaluate that awaits the
+// app, so one stuck call could hold the job until its own timeout with no output. The watchdog turns
+// that into a bounded failure, and the teardown below owns the successful exit.
+const watchdog = setTimeout(() => {
+  console.error("The desktop smoke test did not finish in time; see artifacts/desktop-failure.json.")
+  process.exit(1)
+}, Number(process.env.DESKTOP_SMOKE_TIMEOUT_MS ?? 6 * 60 * 1000))
+watchdog.unref()
 try {
   page = await app.firstWindow()
   page.setDefaultTimeout(20000)
@@ -126,4 +134,19 @@ try {
   }, null, 2))
   if (page) await page.screenshot({ path: path.join(artifacts, "desktop-failure.png"), timeout: 3000 }).catch(() => {})
   throw error
-} finally { await app.close() }
+} finally {
+  // On macOS the app keeps running after a successful run — closing the last window does not quit
+  // there — so a green artifact was written while the step itself stayed alive until the job
+  // timeout. The close is bounded and the child is killed if quitting did not happen.
+  const application = app.process()
+  const closed = await Promise.race([
+    app.close().then(() => true, () => false),
+    new Promise((resolve) => setTimeout(() => resolve(false), 15000)),
+  ])
+  if (!closed || application.exitCode === null) application.kill("SIGKILL")
+  clearTimeout(watchdog)
+}
+// Nothing follows the smoke, and a surviving Electron child keeps this process alive, so the
+// successful exit is explicit instead of left to the event loop draining.
+await new Promise((resolve) => process.stdout.write("", resolve))
+process.exit(0)
