@@ -433,6 +433,32 @@ test("a record exports to a file that parses back to the same run", async () => 
   assert.equal(exportTurnRecord(record, { pretty: false }).json.includes("\n  "), false)
 })
 
+test("a recorded step keeps the provider's own token counts", () => {
+  const make = (usage) => {
+    const recorder = createTurnRecorder({ id: "turn-usage" })
+    recorder.begin({ provider: "gemini", model: "m", userMessage: "Hỏi" })
+    recorder.step({ step: 1, text: "Đáp", usage, toolCalls: [] })
+    recorder.finish({ status: "completed" })
+    return recorder.snapshot().steps[0].usage
+  }
+  // Gemini's usageMetadata names and OpenAI's usage names both survive normalization.
+  assert.deepEqual(make({ promptTokenCount: 21, candidatesTokenCount: 9, cachedContentTokenCount: 3, totalTokenCount: 30 }), {
+    promptTokens: 21,
+    outputTokens: 9,
+    completionTokens: 9,
+    cachedTokens: 3,
+    totalTokens: 30,
+  })
+  assert.deepEqual(make({ prompt_tokens: 12, completion_tokens: 4, total_tokens: 16, prompt_tokens_details: { cached_tokens: 2 } }), {
+    promptTokens: 12,
+    outputTokens: 4,
+    completionTokens: 4,
+    cachedTokens: 2,
+    totalTokens: 16,
+  })
+  assert.equal(make({ promptTokenCount: "12", unrelated: 3 }), null)
+})
+
 test("turn records persist per project, stay bounded and keep the newest first", () => {
   const store = new Map()
   const storage = {

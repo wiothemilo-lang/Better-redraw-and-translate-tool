@@ -153,10 +153,32 @@ export function approvalOf({ approvalRequired = false, ok = false, code = null }
   return "blocked"
 }
 
+function usageNumber(raw, keys) {
+  for (const key of keys) {
+    const value = key.split(".").reduce((node, part) => (node == null ? undefined : node[part]), raw)
+    if (typeof value === "number" && Number.isFinite(value)) return value
+  }
+  return undefined
+}
+
+// The recorder is handed the provider's own usage object, not the harness-normalized one: Gemini
+// reports promptTokenCount/candidatesTokenCount/usageMetadata, OpenAI reports prompt_tokens/
+// completion_tokens/usage. Keeping only camelCase keys dropped the counts from every real transcript.
 function normalizeUsage(raw) {
   if (!raw || typeof raw !== "object") return null
   const out = {}
-  for (const key of ["promptTokens", "outputTokens", "completionTokens", "cachedTokens", "totalTokens", "calls", "costUsd", "unpricedCalls", "estimatedCalls"]) {
+  const prompt = usageNumber(raw, ["promptTokens", "promptTokenCount", "prompt_tokens"])
+  const output = usageNumber(raw, ["outputTokens", "completionTokens", "completion_tokens", "candidatesTokenCount"])
+  const cached = usageNumber(raw, ["cachedTokens", "cachedContentTokenCount", "prompt_tokens_details.cached_tokens"])
+  const total = usageNumber(raw, ["totalTokens", "totalTokenCount", "total_tokens"])
+  if (prompt !== undefined) out.promptTokens = prompt
+  if (output !== undefined) {
+    out.outputTokens = output
+    out.completionTokens = output
+  }
+  if (cached !== undefined) out.cachedTokens = cached
+  if (total !== undefined) out.totalTokens = total
+  for (const key of ["calls", "costUsd", "unpricedCalls", "estimatedCalls"]) {
     if (typeof raw[key] === "number" && Number.isFinite(raw[key])) out[key] = raw[key]
   }
   return Object.keys(out).length ? out : null
