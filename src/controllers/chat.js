@@ -757,7 +757,7 @@ export function setupChat({
     const intro = document.createElement("div")
     intro.className = "chat-msg system"
     intro.textContent =
-      "Trợ lý AI Harness v2.5 hỗ trợ ngữ cảnh dự án trực tiếp, hồ sơ kỹ năng theo thể loại, thẻ hỏi trắc nghiệm, duyệt từng thay đổi AI (kèm duyệt thao tác hàng loạt), Chế độ Kế hoạch (Plan Mode), tự thử lại khi lỗi mạng/429, chống lặp công cụ và lệnh nhanh (/qc, /plan, /autofit, /compact, /skill, /help)."
+      "Trợ lý AI Harness v3 hỗ trợ ngữ cảnh dự án trực tiếp, hồ sơ kỹ năng theo thể loại, thẻ hỏi trắc nghiệm, duyệt từng thay đổi AI (kèm duyệt thao tác hàng loạt), Chế độ Kế hoạch (Plan Mode), tự thử lại khi lỗi mạng/429, chống lặp công cụ và lệnh nhanh (/qc, /plan, /autofit, /compact, /skill, /help)."
     messagesEl.append(intro)
   }
 
@@ -882,6 +882,10 @@ export function setupChat({
         statusEl.textContent = "Lịch sử chat còn ngắn, chưa cần nén."
         return
       }
+      if (res.budgetBlocked) {
+        statusEl.textContent = res.message
+        return
+      }
       chatHistory = res.history
       if (compactProjectId) saveProjectChatSession(compactProjectId, { history: chatHistory, todos: tools.getTodos?.() ?? [] })
       renderPersistedSession()
@@ -897,8 +901,13 @@ export function setupChat({
         ? "Đã dừng tóm tắt ngữ cảnh."
         : "Không tóm tắt được bằng AI: " + providerFailureText(error)
     } finally {
+      const startedIn = compactProjectId
       activeController = null
       syncBusyControls()
+      // A project switch during AI compaction defers exactly like one during a turn. The summary
+      // was saved under the project it started in, so the panel must now adopt the open project's
+      // transcript instead of keeping the old one for the next prompt.
+      if (sessionSyncPending || (startedIn && startedIn !== state.projectId)) syncProjectSession()
     }
   }
 
@@ -1032,7 +1041,7 @@ export function setupChat({
     const recorder = createTurnRecorder()
     const persistRecord = () => {
       const record = recorder.snapshot()
-      if (record) replay?.save(record)
+      if (record) replay?.save(record, turnProject())
       return record
     }
 

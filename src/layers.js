@@ -112,7 +112,13 @@ export function strokeTarget(page, layerId) {
 
 export function addStroke(page, stroke, layerId) {
   if (!page || !stroke) return null
-  const target = strokeTarget(page, layerId)
+  let target = strokeTarget(page, layerId)
+  if (!target) {
+    // The panel can delete the last retouch layer. Without a layer a stroke is stored but never
+    // painted or exported, so the next stroke restores a retouch layer below the text instead.
+    const textIndex = page.layers.findIndex((layer) => layer.kind === "text")
+    target = addLayer(page, "retouch", { index: textIndex < 0 ? undefined : textIndex })
+  }
   page.retouchStrokes ??= []
   // The id is always written: reordering the stack must never move a stroke to another layer.
   if (target) stroke.layerId = target.id

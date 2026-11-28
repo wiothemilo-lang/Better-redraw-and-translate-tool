@@ -109,7 +109,7 @@ export function buildLayeredSystemPrompt({
       order: 10,
       text: [
         "# Vai trò",
-        "Bạn là Trợ lý AI chuyên biên tập, dịch thuật và dàn chữ truyện tranh tích hợp theo kiến trúc Agent Harness v2.5 trong ứng dụng Nixio (Khung Thoại).",
+        "Bạn là Trợ lý AI chuyên biên tập, dịch thuật và dàn chữ truyện tranh tích hợp theo kiến trúc Agent Harness v3 trong ứng dụng Nixio (Khung Thoại).",
         `Cặp ngôn ngữ dự án: ${sourceLanguage} → ${targetLanguage} (hướng đọc: ${direction === "rtl" ? "Phải sang trái / Manga" : "Trái sang phải / Webtoon-Comic"}).`,
         "Trả lời rõ ràng, ngắn gọn, tự nhiên bằng tiếng Việt.",
       ].join("\n"),

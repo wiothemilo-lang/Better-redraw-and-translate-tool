@@ -44,6 +44,21 @@ test("strokes saved before layers belong to the implicit retouch layer and new s
   assert.deepEqual(layerStrokes(page, second), [moved])
 })
 
+test("painting after the last retouch layer was deleted restores a layer instead of losing the stroke", () => {
+  const page = { retouchStrokes: [] }
+  const retouch = pageLayers(page).find(({ kind }) => kind === "retouch")
+  assert.equal(removeLayer(page, retouch.id), true)
+  assert.deepEqual(page.layers.map(({ kind }) => kind), ["cleanup", "text"])
+
+  const stroke = paintStroke()
+  assert.equal(addStroke(page, stroke), stroke)
+  const restored = strokeLayer(page, stroke)
+  assert.equal(restored?.kind, "retouch")
+  assert.equal(stroke.layerId, restored.id)
+  assert.equal(page.layers.indexOf(restored), 1, "the restored brush layer sits below the text layer")
+  assert.deepEqual(compositedLayers(page).find(({ layer }) => layer === restored).strokes, [stroke])
+})
+
 test("reordering the stack keeps every stroke in the layer it was painted into", () => {
   const page = { retouchStrokes: [] }
   const base = pageLayers(page).find(({ kind }) => kind === "retouch")

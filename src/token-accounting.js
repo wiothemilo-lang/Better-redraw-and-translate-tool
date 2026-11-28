@@ -83,9 +83,14 @@ export function normalizeUsage({ usage = null, promptChars = 0, completionChars 
   }
 }
 
+// The persisted price table only keeps keys up to this length. Build keys inside that bound so a
+// price entered for a long model id survives a reload and the budget gate keeps enforcing it.
+const priceKeyLimit = 120
+
 export function priceKey(provider, model) {
   const name = String(model ?? "").trim().toLowerCase()
-  return (provider === "openai" ? "openai" : "gemini") + ":" + (name || "auto")
+  const prefix = (provider === "openai" ? "openai" : "gemini") + ":"
+  return prefix + (name.slice(0, priceKeyLimit - prefix.length) || "auto")
 }
 
 /**
@@ -176,7 +181,7 @@ function cleanPriceTable(raw) {
   const prices = {}
   for (const [key, value] of Object.entries(raw && typeof raw === "object" ? raw : {})) {
     const row = normalizePrice(value)
-    if (row && typeof key === "string" && key && key.length <= 120) prices[key] = row
+    if (row && typeof key === "string" && key && key.length <= priceKeyLimit) prices[key] = row
   }
   return prices
 }
@@ -234,7 +239,7 @@ export function hydrateLedger(raw) {
     models: cleanBuckets(raw.models, MAX_MODELS, (value) => ({
       provider: value?.provider === "openai" ? "openai" : "gemini",
       model: typeof value?.model === "string" ? value.model.slice(0, 120) : "auto",
-      priceKey: typeof value?.priceKey === "string" ? value.priceKey.slice(0, 120) : "",
+      priceKey: typeof value?.priceKey === "string" ? value.priceKey : "",
     })),
   }
 }

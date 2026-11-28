@@ -163,6 +163,24 @@ test("recordCall aggregates one call into totals, session, page and model bucket
   assert.equal(ledger.totals.calls, 0)
 })
 
+test("a price entered for a long model id survives a reload and still gates spend", () => {
+  const storage = fakeStorage()
+  const options = { storage, projectKey: () => "p", sessionId: "s1", now: () => 1000 }
+  const model = "m".repeat(115)
+  const key = priceKey("openai", model)
+  assert.ok(key.length <= 120, "price keys stay inside the persisted table's limit")
+
+  createUsageLedger(options).setPrice("openai", model, { inputPerMTok: 1, outputPerMTok: 2 })
+  const reloaded = createUsageLedger(options)
+  assert.deepEqual(reloaded.snapshot().prices[key], normalizePrice({ inputPerMTok: 1, outputPerMTok: 2 }))
+  assert.equal(reloaded.snapshot().models.length, 0)
+
+  reloaded.record({ provider: "openai", model, tokens: { promptTokens: 1000, completionTokens: 0 } })
+  const priced = createUsageLedger(options).snapshot()
+  assert.equal(priced.models.find((row) => row.key === key).price.inputPerMTok, 1)
+  assert.ok(priced.totals.costUsd > 0, "the restored price is applied to later calls")
+})
+
 test("hydrateLedger keeps a valid record and drops anything the shape does not own", () => {
   const raw = {
     version: 99,
