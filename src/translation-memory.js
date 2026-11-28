@@ -80,13 +80,46 @@ function profileOf(keys) {
   return keys.profile
 }
 
-// FNV-1a over the folded glossary: reformatting the list keeps the memory valid, while adding or
-// changing a term starts a new glossary version, exactly like the translation signature does.
+// The glossary's meaning lives in its structure, not only in its letters: folding punctuation away
+// made "A = B" and "AB" share a key, so a pair reviewed against a term that was later deleted kept
+// being applied. Each line keeps its separator split and its directives, term order stays irrelevant,
+// and only case, spacing and diacritics are folded. An unparsable line is kept as its own marker so
+// deleting the separator still starts a new version.
+function canonicalGlossary(glossary) {
+  const terms = []
+  let current = null
+  for (const rawLine of String(glossary ?? "").split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith("#") || line.startsWith("//")) continue
+    const directive = line.match(/^@(\p{L}+)(?:\s+(.*))?$/u)
+    if (directive) {
+      const marker = "@" + foldSourceText(directive[1]) + ":" + foldSourceText(directive[2] ?? "")
+      if (current) current.push(marker)
+      else terms.push([marker])
+      continue
+    }
+    const separator = line.includes("=") ? "=" : line.includes("->") ? "->" : line.includes(":") ? ":" : ""
+    const index = separator ? line.indexOf(separator) : -1
+    const source = index < 0 ? "" : foldSourceText(line.slice(0, index))
+    const target = index < 0 ? "" : foldSourceText(line.slice(index + separator.length))
+    if (!source || !target) {
+      terms.push([`invalid:${foldSourceText(line)}`])
+      current = null
+      continue
+    }
+    current = [source, target]
+    terms.push(current)
+  }
+  return terms.map((term) => term.join("\u0001")).sort().join("\u0002")
+}
+
+// FNV-1a over the canonical glossary: reformatting the list keeps the memory valid, while adding,
+// changing or deleting a term starts a new glossary version, exactly like the translation signature.
 export function glossaryVersion(glossary) {
-  const folded = foldSourceText(glossary)
+  const canonical = canonicalGlossary(glossary)
   let hash = 0x811c9dc5
-  for (let index = 0; index < folded.length; index++) {
-    hash ^= folded.codePointAt(index)
+  for (let index = 0; index < canonical.length; index++) {
+    hash ^= canonical.codePointAt(index)
     hash = Math.imul(hash, 0x01000193) >>> 0
   }
   return hash.toString(16)
@@ -171,7 +204,9 @@ function insertEntry(memory, entry) {
   return entry
 }
 
-// The store is bounded: the oldest machine pairs go first, and a reviewed pair is never dropped.
+// The store is bounded: the oldest machine pairs go first, because they are the cheapest to lose. A
+// reviewed pair is only evicted when nothing else is left — the manifest refuses more than the limit,
+// so failing to trim would turn every later save into an invalid-project error.
 export function pruneTranslationMemory(memory, limit = translationMemoryEntryLimit) {
   while (memory.entries.length > limit) {
     let oldest = -1
@@ -179,7 +214,13 @@ export function pruneTranslationMemory(memory, limit = translationMemoryEntryLim
       if (candidate.reviewed) continue
       if (oldest < 0 || candidate.updatedAt < memory.entries[oldest].updatedAt) oldest = index
     }
-    if (oldest < 0) break
+    // Every remaining pair was reviewed: drop the least recently touched one to keep the cap.
+    if (oldest < 0) {
+      oldest = 0
+      for (const [index, candidate] of memory.entries.entries()) {
+        if (candidate.updatedAt < memory.entries[oldest].updatedAt) oldest = index
+      }
+    }
     memory.entries.splice(oldest, 1)
   }
   return memory

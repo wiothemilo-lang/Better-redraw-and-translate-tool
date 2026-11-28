@@ -67,6 +67,20 @@ test("the glossary version only changes when a term changes", () => {
   assert.equal(glossaryVersion("先生 = thầy"), glossaryVersion("  先生   = thầy "))
   assert.equal(glossaryVersion("先生 = thầy"), glossaryVersion("先生 = thấy"))
   assert.notEqual(glossaryVersion("先生 = thầy"), glossaryVersion(""))
+  // Reordering terms and switching the separator style is reformatting, not a new glossary.
+  assert.equal(glossaryVersion("A = B\nC = D"), glossaryVersion("C -> D\nA : B"))
+  assert.equal(glossaryVersion("A = B"), glossaryVersion("# ghi chú\nA = B\n// ghi chú"))
+})
+
+// Regression for #141: folding punctuation made a deleted term and its two letters share a scope key,
+// so a pair recorded for "A = B" was applied to a glossary that now reads "AB".
+test("the glossary version keeps the separator that turned a term into two letters", () => {
+  assert.notEqual(glossaryVersion("A = B"), glossaryVersion("AB"))
+  assert.notEqual(glossaryVersion("A = B"), glossaryVersion("A B"))
+  const scoped = japaneseVietnamese("A = B")
+  const store = seeded([[{ source: "A", target: "B" }, scoped, { now: 1, reviewed: true }]])
+  const edited = japaneseVietnamese("AB")
+  assert.equal(store.lookup({ text: "A", scope: edited }), null, "a pair outlives the term it was recorded under")
 })
 
 // --- matching and ranking -----------------------------------------------------------------------
@@ -202,6 +216,40 @@ test("the store is bounded and reviewed pairs survive pruning", () => {
   })
   pruneTranslationMemory(memory, 2)
   assert.deepEqual(memory.entries.map((entry) => entry.id), ["b", "c"], "the oldest machine pair goes first")
+})
+
+// Regression for #139: every pair can be reviewed, in which case the old prune loop found nothing to
+// evict, the store outgrew the manifest limit and the next save failed instead of trimming.
+test("the store stays within its cap when every pair was reviewed", () => {
+  const scope = japaneseVietnamese()
+  const memory = {
+    version: 1,
+    entries: Array.from({ length: translationMemoryEntryLimit + 5 }, (_, index) => ({
+      id: "e" + index, source: "s" + index, target: "t" + index,
+      sourceLanguage: "Japanese", targetLanguage: "Vietnamese", glossaryKey: scope.glossaryKey,
+      page: "", style: "", reviewed: true, confidence: 1, hits: 0, createdAt: index, updatedAt: index,
+    })),
+  }
+  pruneTranslationMemory(memory)
+  assert.equal(memory.entries.length, translationMemoryEntryLimit)
+  assert.equal(memory.entries.some((entry) => entry.id === "e0"), false, "the least recently touched pair goes")
+  // Writing the trimmed store is accepted; the untrimmed one is the failure the issue reported.
+  assert.doesNotThrow(() => writeProject(projectWith({ version: 1, entries: memory.entries })))
+})
+
+test("recording after the cap evicts instead of growing past it", () => {
+  const scope = japaneseVietnamese()
+  const store = createTranslationMemoryStore({
+    version: 1,
+    entries: Array.from({ length: translationMemoryEntryLimit }, (_, index) => ({
+      id: "e" + index, source: "s" + index, target: "t" + index,
+      sourceLanguage: "Japanese", targetLanguage: "Vietnamese", glossaryKey: scope.glossaryKey,
+      page: "", style: "", reviewed: true, confidence: 1, hits: 0, createdAt: index, updatedAt: index,
+    })),
+  })
+  store.record({ source: "new", target: "mới" }, { scope }, { now: translationMemoryEntryLimit + 1, reviewed: true })
+  assert.equal(store.size, translationMemoryEntryLimit)
+  assert.equal(store.memory().entries.some((entry) => entry.source === "new"), true)
 })
 
 test("the store reports its revision so the panel knows when to recompute", () => {
