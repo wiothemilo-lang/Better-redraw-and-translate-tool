@@ -26,6 +26,7 @@ import { glossaryStatusText, parseTerminologyGraph } from "../terminology-graph.
 import { groupDialogue } from "../io.js"
 import { createCredentialSettings } from "../credential-settings.js"
 import { PROVIDER_BRIDGE_CODES, providerCredentialsInMain } from "../provider-bridge.js"
+import { translate } from "../i18n.js"
 
 const llmStorageKey = "khung-thoai-llm-config"
 const llmPresets = {
@@ -54,6 +55,7 @@ export function setupTranslation({
   notifyOverflowIfAny,
   translationMemory,
   usageLedger,
+  t = (key, params) => translate("vi", key, params),
 }) {
   let translationController
   // The project owns the pairs; a caller that does not supply a store (tests, the browser panel
@@ -303,7 +305,7 @@ export function setupTranslation({
     byId("translation-memory-status").textContent = summary.total
       ? `Bộ nhớ dịch: ${summary.total} cặp đã lưu (${summary.reviewed} cặp đã duyệt)` +
         (suggestions ? ` · ${suggestions} gợi ý từ bộ nhớ cho trang này.` : ".") +
-        (evicted ? ` Đã bỏ ${evicted} cặp cũ để giữ giới hạn ${translationMemoryEntryLimit}.` : "")
+        (evicted ? " " + t("translation.memory.evicted", { count: evicted, limit: translationMemoryEntryLimit }) : "")
       : "Bộ nhớ dịch: chưa có cặp nào trong dự án."
     const button = byId("use-approved-translation")
     button.disabled = !suggestions || projectBusy()

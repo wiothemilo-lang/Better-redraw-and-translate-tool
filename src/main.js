@@ -2201,7 +2201,7 @@ setupUsage({ byId, ledger: usageLedger, notify, pageId: () => state.pageId })
 // Turn transcripts belong to the project that was open when the turn ran, so the panel reads them the
 // same way the chat session is restored. A session with no file yet shares the "unsaved" bucket the
 // usage ledger already uses.
-const replay = setupReplay({ byId, projectId: () => state.projectId || "unsaved", notify })
+const replay = setupReplay({ byId, projectId: () => state.projectId || "unsaved", notify, t })
 replay.refresh()
 
 function notifyOverflowIfAny(page, sourceLabel = "") {

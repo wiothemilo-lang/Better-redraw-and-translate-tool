@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { setupReplay } from "../src/controllers/replay.js"
 import { createTurnRecorder } from "../src/agent-replay.js"
+import { translate } from "../src/i18n.js"
 import { SLASH_COMMANDS_HELP, parseSlashCommand } from "../src/agent-commands.js"
 import { loadProjectTurnRecords } from "../src/chat-storage.js"
 
@@ -44,7 +45,7 @@ function installBrowserGlobals() {
   return store
 }
 
-function makePanel() {
+function makePanel(options = {}) {
   const ids = [
     "chat-replay", "chat-replay-list", "chat-replay-empty",
     "chat-replay-trace", "chat-replay-export", "chat-replay-clear",
@@ -57,6 +58,7 @@ function makePanel() {
     projectId: () => project,
     notify: () => {},
     writeFile: (blob, filename) => writes.push({ blob, filename }),
+    ...options,
   })
   return {
     panel,
@@ -93,6 +95,18 @@ function recordFor({ id, approve = "approved", tool = "list_boxes", status = "co
   recorder.finish({ status, elapsedMs: 1500 })
   return recorder.snapshot()
 }
+
+test("the step usage line follows the active locale", async () => {
+  installBrowserGlobals()
+  const { panel, elements } = makePanel({ t: (key, params) => translate("en", key, params) })
+  assert.equal(panel.save(recordFor({ id: "turn-en" })), true)
+  assert.equal((await panel.open("turn-en")).ok, true)
+  const usage = byClass(elements.get("chat-replay-trace"), "chat-replay-usage")
+  assert.equal(usage.length, 1)
+  assert.match(usage[0].textContent, /1\.2k in/)
+  assert.match(usage[0].textContent, /34 out/)
+  assert.match(usage[0].textContent, /200 cached/)
+})
 
 test("the replay panel lists recorded turns, replays one offline and highlights a broken transcript", async (t) => {
   const originalFetch = globalThis.fetch

@@ -549,6 +549,37 @@ test("a machine pair is offered through the panel, not applied behind the user's
   assert.equal(harness.page.boxes[0].text, "Chào buổi sáng.")
 })
 
+test("the panel says how many old pairs the cap removed", async (t) => {
+  const scope = japaneseVietnamese()
+  const entries = Array.from({ length: translationMemoryEntryLimit }, (_, index) => ({
+    id: "cap" + index,
+    source: "source " + index,
+    target: "target " + index,
+    sourceLanguage: "Japanese",
+    targetLanguage: "Vietnamese",
+    glossaryKey: scope.glossaryKey,
+    page: "",
+    style: "",
+    reviewed: true,
+    confidence: 1,
+    hits: 0,
+    createdAt: index,
+    updatedAt: index,
+  }))
+  const harness = await createHarness(t, { memory: { version: 1, entries } })
+  harness.store.record({ source: "Brand new source", target: "Mới" }, { scope }, {
+    now: translationMemoryEntryLimit + 1,
+    reviewed: true,
+  })
+  harness.controller.syncMemory()
+  assert.equal(harness.store.size, translationMemoryEntryLimit)
+  assert.equal(harness.store.evicted, 1)
+  assert.match(
+    harness.byId("translation-memory-status").textContent,
+    /Đã bỏ 1 cặp cũ để giữ giới hạn 4000/,
+  )
+})
+
 test("a near match is a suggestion the user can accept from the panel", async (t) => {
   const scope = japaneseVietnamese()
   // "Ohayou!" (reviewed) is not the box's text: only the folded key matches, so it is a suggestion.

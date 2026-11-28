@@ -13,6 +13,7 @@ import {
   saveProjectTurnRecord,
 } from "../chat-storage.js"
 import { saveFile } from "../io.js"
+import { translate } from "../i18n.js"
 import { formatTokens, formatUsd } from "../token-accounting.js"
 
 export const REPLAY_STATUS_COPY = Object.freeze({
@@ -61,7 +62,13 @@ function describeValue(value) {
   }
 }
 
-export function setupReplay({ byId, projectId = () => "", notify = () => {}, writeFile = saveFile } = {}) {
+export function setupReplay({
+  byId,
+  projectId = () => "",
+  notify = () => {},
+  writeFile = saveFile,
+  t = (key, params) => translate("vi", key, params),
+} = {}) {
   const panelEl = byId?.("chat-replay")
   const listEl = byId?.("chat-replay-list")
   const emptyEl = byId?.("chat-replay-empty")
@@ -130,15 +137,17 @@ export function setupReplay({ byId, projectId = () => "", notify = () => {}, wri
 
   function renderUsage(usage) {
     const parts = []
-    if (Number.isFinite(usage.promptTokens)) parts.push(`${formatTokens(usage.promptTokens)} vào`)
-    if (Number.isFinite(usage.outputTokens)) parts.push(`${formatTokens(usage.outputTokens)} ra`)
-    if (Number.isFinite(usage.cachedTokens) && usage.cachedTokens > 0) parts.push(`${formatTokens(usage.cachedTokens)} đệm`)
-    if (!parts.length && Number.isFinite(usage.totalTokens)) parts.push(`${formatTokens(usage.totalTokens)} tổng`)
+    if (Number.isFinite(usage.promptTokens)) parts.push(t("replay.usage.prompt", { tokens: formatTokens(usage.promptTokens) }))
+    if (Number.isFinite(usage.outputTokens)) parts.push(t("replay.usage.output", { tokens: formatTokens(usage.outputTokens) }))
+    if (Number.isFinite(usage.cachedTokens) && usage.cachedTokens > 0) {
+      parts.push(t("replay.usage.cached", { tokens: formatTokens(usage.cachedTokens) }))
+    }
+    if (!parts.length && Number.isFinite(usage.totalTokens)) parts.push(t("replay.usage.total", { tokens: formatTokens(usage.totalTokens) }))
     if (Number.isFinite(usage.costUsd)) parts.push(formatUsd(usage.costUsd))
     if (!parts.length) return null
     const line = document.createElement("p")
     line.className = "chat-replay-usage"
-    line.textContent = "Token: " + parts.join(" · ")
+    line.textContent = t("replay.usage.label", { parts: parts.join(" · ") })
     return line
   }
 
