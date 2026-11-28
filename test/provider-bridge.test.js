@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { canonicalCredentialScope } from "../desktop/credential-ipc.cjs"
 import { PROVIDER_CODES } from "../desktop/provider-transport.cjs"
 import { isRetryableError, isRetryableStatus, parseRetryAfterMs } from "../src/llm-retry.js"
 import {
@@ -124,6 +125,35 @@ test("without a bridge the browser request is byte-for-byte the one the editor a
   assert.equal(calls[3].url, "https://api.example.com/v1/chat/completions")
   assert.equal("Authorization" in calls[3].init.headers, false)
   assert.equal(validateEndpointUrl("https://api.example.com/v1/"), "https://api.example.com/v1")
+})
+
+// Regression for #137: the renderer used to accept a URL the desktop credential scope always refused,
+// so a query string, userinfo or fragment reached the browser path and was rejected only at save time.
+test("the endpoint validator mirrors the credential scope canonicalizer exactly", () => {
+  const accepted = [
+    "https://api.example.com/v1",
+    "https://api.example.com/v1/",
+    "HTTPS://API.Example.com:443/v1",
+    "http://localhost:11434/v1",
+    "http://127.0.0.1:8080/",
+    "http://[::1]:8000/v1",
+  ]
+  for (const url of accepted) {
+    assert.equal(validateEndpointUrl(url), canonicalCredentialScope("openai", url).slice("openai:".length), url)
+  }
+  const refused = [
+    "https://example.com/v1?key=secret",
+    "https://user:pass@example.com/v1",
+    "https://example.com/v1#frag",
+    "http://example.com/v1",
+    "ftp://example.com/v1",
+    "https://example.com/" + "a".repeat(2048),
+    "",
+  ]
+  for (const url of refused) {
+    assert.throws(() => validateEndpointUrl(url), url)
+    assert.throws(() => canonicalCredentialScope("openai", url), url)
+  }
 })
 
 test("the desktop envelope names the provider and never carries the key", async (t) => {

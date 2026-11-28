@@ -13,6 +13,8 @@
 
 const GEMINI_ORIGIN = "https://generativelanguage.googleapis.com"
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"])
+// Mirrors the bound desktop/credential-ipc.cjs applies before it derives a credential scope.
+const MAX_ENDPOINT_LENGTH = 2048
 const DEFAULT_TIMEOUT_MS = 120000
 // Mirrors the bounds desktop/provider-transport.cjs validates, so the renderer never sends a deadline
 // main would refuse.
@@ -38,11 +40,20 @@ export const PROVIDER_BRIDGE_CODES = Object.freeze({
   CANCELLED: "ERR_PROVIDER_CANCELLED",
 })
 
+// The canonical base URL: the same form main derives for a credential scope, so a URL this accepts is
+// never refused at save time and the browser path does not append "/chat/completions" after a query.
+// Userinfo, query strings and fragments are refused rather than dropped because they can hide a key
+// or change the destination the user is not looking at.
 export function validateEndpointUrl(rawUrl) {
+  const trimmed = String(rawUrl || "").trim()
   let parsed
   try {
-    parsed = new URL(String(rawUrl || "").trim())
+    parsed = new URL(trimmed)
   } catch {
+    throw new Error("Base URL của LLM không hợp lệ (ví dụ: http://localhost:11434/v1).")
+  }
+  if (!trimmed || trimmed.length > MAX_ENDPOINT_LENGTH || parsed.username || parsed.password ||
+      parsed.search || parsed.hash) {
     throw new Error("Base URL của LLM không hợp lệ (ví dụ: http://localhost:11434/v1).")
   }
   const isHttps = parsed.protocol === "https:"
@@ -50,7 +61,7 @@ export function validateEndpointUrl(rawUrl) {
   if (!isHttps && !isLoopbackHttp) {
     throw new Error("Chỉ cho phép HTTPS hoặc HTTP cục bộ (localhost / 127.0.0.1).")
   }
-  return parsed.href.replace(/\/+$/, "")
+  return parsed.protocol + "//" + parsed.host + parsed.pathname.replace(/\/+$/, "")
 }
 
 function desktopBridge() {
