@@ -385,6 +385,9 @@ label:has(> .sr-only:focus-visible), label:has(+ .sr-only:focus-visible) {
   line-height: 1.2;
 }
 .layer-row button:hover, .stroke-row button:hover { background: var(--surface-hover); }
+/* Sized as an em box and centred on the baseline so a drawn action sits where a written one did
+   and the line box keeps the height the glyph gave it (a baseline-aligned box is 1px taller). */
+.layer-row .layer-action-icon { display: inline-block; width: 1em; height: 1em; vertical-align: middle; }
 .stroke-row { border: 1px solid transparent; border-radius: var(--radius-sm); padding: 2px 4px; }
 .stroke-row .stroke-pick { flex: 1 1 96px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stroke-row[data-hidden="true"] .stroke-pick { color: var(--muted); text-decoration: line-through; }

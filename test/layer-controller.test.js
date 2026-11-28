@@ -3,7 +3,7 @@ import test from "node:test"
 import { addStroke, defaultLayers, pageLayers } from "../src/layers.js"
 import { setupLayers } from "../src/controllers/layers.js"
 
-globalThis.document = { createElement: (tag) => fakeElement(tag) }
+globalThis.document = { createElement: (tag) => fakeElement(tag), createElementNS: (_space, tag) => fakeElement(tag) }
 
 function fakeElement(tag = "div") {
   const element = {
@@ -82,6 +82,24 @@ test("the panel lists the stack bottom to top and hides itself without a page", 
   assert.equal(harness.byId("add-layer").disabled, false)
   assert.equal(harness.byId("restore-original").hidden, true)
   assert.deepEqual(harness.recorded, [], "listing the stack records nothing")
+})
+
+test("the copy and remove actions are drawn, not written, so no font fallback decides them", () => {
+  const harness = createHarness()
+  harness.layers.sync()
+  const row = layerRows(harness)[2]
+  // A text glyph here is resolved by whatever symbol font the host has installed: a Debian
+  // baseline drew a thin box for "⧉" and an Ubuntu runner drew a filled double square, which the
+  // visual gate reported as 284 unexplained pixels. Vectors keep the buttons identical.
+  for (const [button, label] of [[row.children[5], "Nhân bản lớp"], [row.children[6], "Xoá lớp"]]) {
+    assert.match(button["aria-label"], new RegExp("^" + label))
+    assert.equal(button.textContent, "")
+    const icon = button.children[0]
+    assert.equal(icon.tagName, "SVG")
+    assert.equal(icon["class"], "layer-action-icon")
+    assert.equal(icon["aria-hidden"], "true")
+    assert.ok(icon.children.length >= 2, "the icon keeps its drawn shapes")
+  }
 })
 
 test("visibility, rename and opacity are one named action each", () => {

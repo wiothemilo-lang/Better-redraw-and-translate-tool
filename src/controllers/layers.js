@@ -4,6 +4,28 @@ import {
   setStrokeHidden, strokeLabel, strokeLayer, strokeTarget,
 } from "../layers.js"
 
+// The copy and close actions are drawn instead of written: no installed UI font has a glyph for
+// either, so Chromium picked a fallback per distribution and the same button rendered as a thin
+// box on one host and a filled double square on another. A vector keeps the row identical
+// everywhere, which is also what the visual baselines compare.
+function layerActionIcon(kind) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  svg.setAttribute("viewBox", "0 0 12 12")
+  svg.setAttribute("aria-hidden", "true")
+  svg.setAttribute("focusable", "false")
+  svg.setAttribute("class", "layer-action-icon")
+  const paint = { fill: "none", stroke: "currentColor", "stroke-width": "1.1", "stroke-linecap": "round" }
+  const shapes = kind === "copy"
+    ? [["rect", { x: 1.5, y: 1.5, width: 6.4, height: 6.4 }], ["rect", { x: 4.1, y: 4.1, width: 6.4, height: 6.4 }]]
+    : [["path", { d: "M2.6 2.6 9.4 9.4" }], ["path", { d: "M9.4 2.6 2.6 9.4" }]]
+  for (const [tag, attributes] of shapes) {
+    const shape = document.createElementNS("http://www.w3.org/2000/svg", tag)
+    for (const [name, value] of Object.entries({ ...paint, ...attributes })) shape.setAttribute(name, String(value))
+    svg.append(shape)
+  }
+  return svg
+}
+
 // The layer stack and the strokes inside it are edited here. Each change is recorded as a named
 // action — with the snapshot taken before the change — so the timeline can step back through a
 // rename, a reorder or one deleted stroke.
@@ -45,10 +67,11 @@ export function setupLayers({
     status(`Lớp "${name}" nhận nét cọ mới.`)
   }
 
-  function actionButton(text, label, key, onClick) {
+  function actionButton(content, label, key, onClick) {
     const button = document.createElement("button")
     button.type = "button"
-    button.textContent = text
+    if (typeof content === "string") button.textContent = content
+    else button.append(content)
     button.setAttribute("aria-label", label)
     button.title = label
     button.dataset.focusKey = key
@@ -120,9 +143,9 @@ export function setupLayers({
     const down = actionButton("↓", `Đưa lớp ${layer.name} xuống`, "layer-down:" + layer.id,
       () => edit(`Đưa lớp "${layer.name}" xuống`, () => moveLayer(page, layer.id, -1), `Đã đưa lớp "${layer.name}" xuống dưới.`))
     down.disabled = projectBusy() || index <= 0
-    const copy = actionButton("⧉", `Nhân bản lớp ${layer.name}`, "layer-copy:" + layer.id,
+    const copy = actionButton(layerActionIcon("copy"), `Nhân bản lớp ${layer.name}`, "layer-copy:" + layer.id,
       () => edit(`Nhân bản lớp "${layer.name}"`, () => Boolean(duplicateLayer(page, layer.id)), `Đã nhân bản lớp "${layer.name}".`))
-    const remove = actionButton("×", `Xoá lớp ${layer.name}`, "layer-remove:" + layer.id, () => {
+    const remove = actionButton(layerActionIcon("remove"), `Xoá lớp ${layer.name}`, "layer-remove:" + layer.id, () => {
       if (pageLayers(page).length <= 1) return status("Một trang luôn cần ít nhất một lớp.", true)
       edit(`Xoá lớp "${layer.name}"`, () => removeLayer(page, layer.id), `Đã xoá lớp "${layer.name}".`)
     })
