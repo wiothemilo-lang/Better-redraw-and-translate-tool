@@ -274,6 +274,21 @@ export function saveGlobalExportProfileId(id, storage = globalThis.localStorage)
   return stored
 }
 
+/**
+ * Remember a profile pick as the default for new projects as well as the global preference.
+ *
+ * `defaults` is the snapshot the project controller resets the form from. Saving only the global key
+ * left that snapshot at its start-up value, so a project created later in the same session fell back
+ * to the old profile even though the select showed the new one.
+ */
+export function rememberExportProfileId(id, defaults = null, index = -1, storage = globalThis.localStorage) {
+  const stored = saveGlobalExportProfileId(id, storage)
+  if (Array.isArray(defaults) && Number.isInteger(index) && index >= 0 && index < defaults.length) {
+    defaults[index] = stored
+  }
+  return stored
+}
+
 export function exportSliceExtension(format) {
   return format === "jpeg" ? "jpg" : "png"
 }

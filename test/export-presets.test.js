@@ -13,6 +13,7 @@ import {
   loadGlobalExportProfileId,
   planExportSlices,
   readExportProfile,
+  rememberExportProfileId,
   resolveExportProfile,
   saveGlobalExportProfileId,
   serializeExportManifest,
@@ -121,6 +122,24 @@ test("the global default profile is stored separately from the project setting",
   assert.equal(loadGlobalExportProfileId(storage), DEFAULT_EXPORT_PROFILE_ID)
   assert.equal(loadGlobalExportProfileId({ getItem() { throw new Error("private mode") } }), DEFAULT_EXPORT_PROFILE_ID)
   assert.equal(saveGlobalExportProfileId("naver", { setItem() { throw new Error("quota") } }), "naver")
+})
+
+// Regression for #145: the reset snapshot was taken once at start-up, so a profile picked later in the
+// session was saved globally but a new project still opened on the start-up profile.
+test("a profile pick also becomes the default the next new project starts from", () => {
+  const storage = fakeStorage()
+  const defaults = ["goc", "goc"]
+  assert.equal(rememberExportProfileId("tapas", defaults, 1, storage), "tapas")
+  assert.equal(defaults[1], "tapas")
+  assert.equal(loadGlobalExportProfileId(storage), "tapas")
+
+  // An unknown id is stored as the shipped default, and the default snapshot follows the same value.
+  assert.equal(rememberExportProfileId("bogus", defaults, 1, storage), DEFAULT_EXPORT_PROFILE_ID)
+  assert.equal(defaults[1], DEFAULT_EXPORT_PROFILE_ID)
+
+  // A setup without the field (or with a stale index) must not throw.
+  assert.equal(rememberExportProfileId("naver", null, -1, storage), "naver")
+  assert.equal(rememberExportProfileId("naver", ["goc"], 4, storage), "naver")
 })
 
 test("planExportSlices scales the page to the profile width and cuts contiguous balanced slices", () => {

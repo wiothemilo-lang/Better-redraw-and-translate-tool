@@ -6,8 +6,8 @@ import { projectPageLimit as pageLimit, projectSettingIds, projectStyle } from "
 import {
   exportProfilePresets,
   loadGlobalExportProfileId,
+  rememberExportProfileId,
   resolveExportProfile,
-  saveGlobalExportProfileId,
 } from "./export-presets.js"
 import { detectAllBubblesOnImage } from "./bubble.js"
 import {
@@ -108,6 +108,7 @@ const exportProfileField = byId("export-profile")
 exportProfileField?.replaceChildren(...exportProfilePresets.map(({ id, name }) => new Option(name, id)))
 if (exportProfileField) exportProfileField.value = loadGlobalExportProfileId()
 const defaultProjectSettings = projectSettings.map(({ value }) => value)
+const exportProfileIndex = exportProfileField ? projectSettings.indexOf(exportProfileField) : -1
 // A settings edit is named by the visible label the user actually changed, so the timeline reads
 // "Đổi cài đặt Hướng đọc" instead of a generic name.
 const settingLabels = new Map(projectSettings.map((field) => [
@@ -573,9 +574,10 @@ for (const field of projectSettings) {
   })
 }
 
-// The project keeps its own profile, and the last choice becomes the default for new projects.
+// The project keeps its own profile, and the last choice becomes the default for new projects:
+// rememberExportProfileId also moves the snapshot startNewProject() resets the form from.
 byId("export-profile")?.addEventListener("change", (event) => {
-  saveGlobalExportProfileId(event.currentTarget.value)
+  rememberExportProfileId(event.currentTarget.value, defaultProjectSettings, exportProfileIndex)
 })
 
 let statusDescriptor = null
