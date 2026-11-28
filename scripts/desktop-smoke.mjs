@@ -39,6 +39,30 @@ async function waitForArtifact(read, description) {
   }
   throw new Error("Timed out waiting for " + description)
 }
+// Playwright's waitForFunction treats a promise-returning predicate as already truthy, so an async
+// projectList() call returns the pending promise instead of polling it. Poll from Node instead.
+async function waitForFreshAutosave(before, timeout = 30000) {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    const state = await page.evaluate(async (previous) => {
+      const projects = await window.khungThoaiDesktop.projectList()
+      const project = projects.find((item) => item.id === previous.projectId) ?? projects[0]
+      return {
+        snapshotId: project?.snapshots?.[0]?.id ?? null,
+        status: document.getElementById("autosave-status").textContent,
+      }
+    }, before)
+    if (
+      state.snapshotId &&
+      state.snapshotId !== before.snapshotId &&
+      state.status.includes("Đã tự lưu lúc") &&
+      state.status !== before.status
+    ) return state.snapshotId
+    await page.waitForTimeout(100)
+  }
+  throw new Error("Timed out waiting for a newer autosave snapshot")
+}
+
 // Playwright bounds locators and navigation but not app.evaluate or a page.evaluate that awaits the
 // app, so one stuck call could hold the job until its own timeout with no output. The watchdog turns
 // that into a bounded failure, and the teardown below owns the successful exit.
@@ -119,16 +143,7 @@ try {
   })
   await page.locator("#box-text").fill("Recover this latest edit")
   await page.locator("#box-form button[type=submit]").click()
-  const snapshotId = await page
-    .waitForFunction(async (before) => {
-      const projects = await window.khungThoaiDesktop.projectList()
-      const project = projects.find((item) => item.id === before.projectId) ?? projects[0]
-      const latest = project?.snapshots?.[0]
-      const status = document.getElementById("autosave-status").textContent
-      return latest && latest.id !== before.snapshotId &&
-        status.includes("Đã tự lưu lúc") && status !== before.status ? latest.id : false
-    }, beforeAutosave, { timeout: 30000 })
-    .then((handle) => handle.jsonValue())
+  const snapshotId = await waitForFreshAutosave(beforeAutosave)
   await page.reload()
   await page.locator("#recover-project").waitFor({ state: "visible" })
   await page.locator("#recent-projects-button").click()

@@ -28,8 +28,13 @@ test("the desktop smoke test waits for a snapshot newer than the edit, not a sta
   // reloaded before the new autosave and could restore the previous snapshot (#146).
   const source = await readFile(path.join(root, "scripts/desktop-smoke.mjs"), "utf8")
   assert.match(source, /const beforeAutosave = await page\.evaluate/)
-  assert.match(source, /latest\.id !== before\.snapshotId/)
-  assert.match(source, /status !== before\.status/)
+  assert.match(source, /async function waitForFreshAutosave/)
+  assert.match(source, /await waitForFreshAutosave\(beforeAutosave\)/)
+  assert.match(source, /project\?\.snapshots\?\.\[0\]\?\.id/)
+  assert.match(source, /state\.snapshotId !== before\.snapshotId/)
+  assert.match(source, /state\.status !== before\.status/)
+  // An async waitForFunction predicate is resolved as a pending promise, not polled.
+  assert.doesNotMatch(source, /waitForFunction\(async/)
   assert.match(source, /data-snapshot-id/)
   // The dialog is filled asynchronously, so its text cannot be read just because it is visible.
   assert.match(source, /const restore = page\.locator/)
