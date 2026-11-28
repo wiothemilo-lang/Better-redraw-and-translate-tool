@@ -83,6 +83,25 @@ test("controller coverage passes above the floor and fails below it", () => {
   assert.match(failing.failures.join("\n"), /Controller line coverage 20\.00% is below the 50% floor \(1\/5 lines\)/)
 })
 
+test("a controller below its own floor fails even when the aggregate is high", () => {
+  // 90/90 lines in chat.js and 3/10 in tasks.js: 84.5% aggregate, so only a per-file rule notices.
+  const result = checkControllerCoverage({
+    lcov: lcov([
+      [controllers[0], Array.from({ length: 90 }, () => 1)],
+      [controllers[1], [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]],
+    ]),
+    controllerFiles: controllers,
+    floor: 25,
+    fileFloor: 50,
+  })
+  assert.ok(result.summary.percentage > 50)
+  assert.equal(result.ok, false)
+  assert.match(
+    result.failures.join("\n"),
+    /src\/controllers\/tasks\.js line coverage 30\.00% is below the 50% per-file floor \(3\/10 lines\)/,
+  )
+})
+
 test("a controller module missing from the report fails the coverage gate", () => {
   const result = checkControllerCoverage({
     lcov: lcov([[controllers[0], [1]]]),

@@ -5,12 +5,13 @@ import { fileURLToPath } from "node:url"
 const root = fileURLToPath(new URL("..", import.meta.url))
 export const controllerDirectory = "src/controllers"
 
-// Measured with `npm run test:coverage` on Node 22.23.3 after the controller
-// tests landed: the suite covers 27.10% of the executable lines in
-// src/controllers/. The floor sits two points below that so refactors have room
-// but dropping controller tests, or adding a controller that no test loads,
-// fails CI instead of silently shrinking the report.
+// The aggregate floor alone is a false green: one large, unexercised controller can hide behind the
+// files that are tested. Every controller therefore also has to reach its own floor, so importing a
+// module without running it fails CI. The current suite is well above both floors (about three
+// quarters of controller lines, lowest controller near 30%), leaving room for refactors without
+// letting a new controller through on import alone.
 export const CONTROLLER_LINE_FLOOR = 25
+export const CONTROLLER_FILE_LINE_FLOOR = 25
 
 // fileURLToPath refuses a POSIX-style file URL on Windows ("File URL path must be absolute"),
 // and a coverage report can be produced anywhere, so the pathname is the fallback there.
@@ -79,13 +80,29 @@ export function summarizeControllers(records, controllerFiles) {
   }
 }
 
-export function checkControllerCoverage({ lcov, controllerFiles, floor = CONTROLLER_LINE_FLOOR, rootDirectory = root }) {
+export function checkControllerCoverage({
+  lcov,
+  controllerFiles,
+  floor = CONTROLLER_LINE_FLOOR,
+  fileFloor = CONTROLLER_FILE_LINE_FLOOR,
+  rootDirectory = root,
+}) {
   const summary = summarizeControllers(parseLcov(lcov, rootDirectory), controllerFiles)
   const failures = []
   for (const file of summary.missing) {
     failures.push(
       `${file} is missing from the coverage report. Import and exercise it from a test so controller coverage measures the module.`,
     )
+  }
+  for (const file of summary.files) {
+    // A file with no executable lines has nothing to exercise; a file with lines and no hits is the
+    // imported-but-never-run controller this floor exists to catch.
+    if (file.found > 0 && file.percentage < fileFloor) {
+      failures.push(
+        `${file.file} line coverage ${file.percentage.toFixed(2)}% is below the ${fileFloor}% per-file floor ` +
+          `(${file.hit}/${file.found} lines).`,
+      )
+    }
   }
   if (!summary.linesFound) {
     failures.push("The coverage report contains no executable lines from src/controllers/.")
