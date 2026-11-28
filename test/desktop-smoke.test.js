@@ -31,6 +31,10 @@ test("the desktop smoke test waits for a snapshot newer than the edit, not a sta
   assert.match(source, /latest\.id !== before\.snapshotId/)
   assert.match(source, /status !== before\.status/)
   assert.match(source, /data-snapshot-id/)
+  // The dialog is filled asynchronously, so its text cannot be read just because it is visible.
+  assert.match(source, /const restore = page\.locator/)
+  assert.match(source, /await restore\.waitFor\(\{ state: "visible" \}\)/)
+  assert.doesNotMatch(source, /#recent-projects"\)\.textContent\(\), \/Khôi phục\//)
   assert.doesNotMatch(source, /#autosave-status"\)\.filter\(\{ hasText: "Đã tự lưu lúc"/)
 })
 
