@@ -241,7 +241,9 @@ jobs:
           # artifacts themselves instead of being spelled out from the tag.
           # The `|| true` matters: under `set -eo pipefail` a failing `ls` would abort this step
           # before the guard below could say what was missing.
-          RPM_FILE=$(ls release-assets/*.rpm 2>/dev/null | head -n 1 || true)
+          # Only the basename reaches the notes: a path-prefixed name is not an asset in the release and
+          # the check below (and every download link) would silently miss it.
+          RPM_FILE=$(basename "$(ls release-assets/*.rpm 2>/dev/null | head -n 1 || true)")
           if [ -z "$RPM_FILE" ]; then
             echo "No .rpm artifact was uploaded; refusing to write release notes that point at nothing."
             exit 1

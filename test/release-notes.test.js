@@ -13,7 +13,7 @@ const script = path.join(root, "scripts/check-release-notes.mjs")
 
 const notes = [
   "| Windows | `Khung-Thoai-1.2.0-win-x64-setup.exe` |",
-  "| Fedora | `khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm` |",
+  "| Fedora | `release-assets/khung-thoai-1.2.0-0.1.beta.1.x86_64.rpm` |",
   "| Portable | Giải nén và chạy `Khung-Thoai.exe` |",
   "Kiểm tra toàn vẹn tệp bằng `SHA256SUMS.txt`.",
 ].join("\n")

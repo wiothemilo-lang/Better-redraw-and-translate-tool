@@ -49,7 +49,9 @@ test("the release notes take the RPM file name from the artifacts and every name
   assert.doesNotMatch(publish, /khung-thoai-\$\{VER\}-1\.x86_64\.rpm/)
   // A failing `ls` inside $( ) aborts a bash -eo pipefail step before its own guard can explain
   // what was missing, so the glob is read without the `cd` and its exit code cannot leak.
-  assert.match(publish, /RPM_FILE=\$\(ls release-assets\/\*\.rpm 2>\/dev\/null \| head -n 1 \|\| true\)/)
+  // The basename is what an artifact is actually called: a path prefix would slip past the check and
+  // become a dead link in the notes (#144).
+  assert.match(publish, /RPM_FILE=\$\(basename "\$\(ls release-assets\/\*\.rpm 2>\/dev\/null \| head -n 1 \|\| true\)"\)/)
   assert.doesNotMatch(publish, /cd release-assets && ls/)
   assert.match(publish, /\| \*\*Fedora Linux \(x64\)\*\* \| \\`\$\{RPM_FILE\}\\` \|/)
   // And the notes are not published until their file names are checked against the assets.

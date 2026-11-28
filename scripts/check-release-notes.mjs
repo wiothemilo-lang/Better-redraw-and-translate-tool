@@ -14,7 +14,9 @@ const VERSIONED = /\d+\.\d+\.\d+/
 export function assetsNamedInNotes(notes) {
   const names = new Set()
   for (const match of String(notes ?? "").matchAll(/`([^`\n]+)`/g)) {
-    const name = match[1].trim()
+    // A note may show the asset path (the workflow used to paste release-assets/... into the table);
+    // the artifact itself is still named by its basename, so only the last segment is compared.
+    const name = match[1].trim().split(/[\\/]/).pop() ?? ""
     if (!ASSET_NAME.test(name) || !VERSIONED.test(name)) continue
     names.add(name)
   }
