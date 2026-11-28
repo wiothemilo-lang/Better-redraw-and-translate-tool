@@ -375,17 +375,37 @@ export async function migrateLegacyCredentials({ storage, api } = {}) {
   }
   const secrets = []
   for (const candidate of inspection.secrets) secrets.push(await migrateSecret(candidate, inspection.record, bridge, cache))
-  // Every secret either never had a vault, or met a vault that is not open yet. Erasing the record
-  // here would destroy the only copy of a key on a condition this module already knows is temporary,
-  // so the plaintext is kept and the next launch retries the migration.
-  const deferred = secrets.length > 0 && secrets.every(({ outcome }) => outcome === "vault-unavailable" || outcome === "no-vault")
-  if (deferred) {
+  // Deferral is per secret, not per record: a mixed outcome (one key waiting for the vault and one
+  // ambiguous field, say) used to erase the record and destroy the only copy of the usable key. The
+  // keys whose vault is not open stay in storage; everything else that has to leave still leaves.
+  const deferredFields = new Set(
+    secrets
+      .filter(({ outcome }) => outcome === "vault-unavailable" || outcome === "no-vault")
+      .map(({ field }) => field),
+  )
+  if (deferredFields.size > 0) {
+    const kept = { ...inspection.record }
+    for (const candidate of inspection.secrets) {
+      if (deferredFields.has(candidate.field)) kept[candidate.field] = candidate.value
+    }
+    // When the deferred keys are the only fields being dropped, rewriting storage would gain nothing
+    // and could reorder the record, so it is left byte for byte as it is.
+    let persisted = false
+    if (inspection.droppedFields > deferredFields.size) {
+      try {
+        target.setItem(LLM_CONFIG_STORAGE_KEY, JSON.stringify(kept))
+        persisted = true
+      } catch {
+        persisted = false
+      }
+    }
     return result(CREDENTIAL_SETTINGS_CODES.MIGRATION_DEFERRED, {
-      changed: false,
-      persisted: false,
+      changed: persisted,
+      persisted,
       secrets,
       unknownFields: inspection.unknownFields,
-      needsReentry: false,
+      deferredFields: [...deferredFields],
+      needsReentry: secrets.some(({ field, needsReentry }) => needsReentry && !deferredFields.has(field)),
       vault: cache.vault,
     })
   }

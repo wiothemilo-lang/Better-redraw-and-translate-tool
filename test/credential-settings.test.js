@@ -300,6 +300,28 @@ test("a vault that is not open yet keeps the plaintext key for the next launch",
   }
 })
 
+// Regression for #135: a mixed outcome (one key waiting for the vault, one field that can never be
+// scoped) used to skip the per-secret deferral and overwrite the record, deleting the only copy of a
+// key the user could still use once the vault opens.
+test("a locked vault keeps the usable key while the ambiguous field still leaves", async () => {
+  const storage = memoryStorage({
+    [LLM_CONFIG_STORAGE_KEY]: JSON.stringify({ provider: "gemini", geminiKey: GEMINI_KEY, apiKey: AMBIGUOUS_KEY }),
+  })
+  const vault = fakeVault({ status: () => ({ stored: false, supported: false, protection: null, reason: "unavailable" }) })
+  const outcome = await migrateLegacyCredentials({ storage, api: vault.api })
+
+  assert.deepEqual(outcome.secrets.map(({ outcome: kind }) => kind), ["vault-unavailable", "unscoped"])
+  assert.equal(outcome.code, CREDENTIAL_SETTINGS_CODES.MIGRATION_DEFERRED)
+  assert.deepEqual(outcome.deferredFields, ["geminiKey"])
+  assert.equal(outcome.persisted, true, "the ambiguous field is cleaned while the key is kept")
+  assert.equal(vault.calls.save.length, 0)
+  const stored = storedConfig(storage)
+  assert.equal(stored.geminiKey, GEMINI_KEY, "the only copy of the key survives the locked vault")
+  assert.equal("apiKey" in stored, false)
+  assert.deepEqual(stored, { provider: "gemini", geminiKey: GEMINI_KEY })
+  assertNoSecret(outcome)
+})
+
 test("a browser without a vault keeps the legacy record untouched too", async () => {
   const storage = memoryStorage({
     [LLM_CONFIG_STORAGE_KEY]: JSON.stringify({ provider: "gemini", baseUrl: "", llmModel: "", geminiKey: GEMINI_KEY }),
