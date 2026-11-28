@@ -118,6 +118,9 @@ const settingLabels = new Map(projectSettings.map((field) => [
 let previewRedraw
 let cleanRawController = null
 let syncLayers = () => {}
+// The export summary describes the selected profile; a project switch can change that selection
+// without a change event, so onProjectSwitch runs the summary refresh once the export UI exists.
+let syncExportProfileSummary = () => {}
 
 // #79: the interface locale is applied before any text is rendered. `t` is the only way a message
 // reaches the screen, and a switch re-renders the status line and the theme label in place.
@@ -2429,6 +2432,7 @@ const projects = setupProjects({
   onProjectSwitch: () => {
     chat?.syncProjectSession()
     translation.refreshGlossaryStatus()
+    syncExportProfileSummary()
   },
 })
 const dialogs = setupDialogs({
@@ -2472,6 +2476,7 @@ const exportUi = setupExports({
   commitLiveForm: commitLiveFormCheckpoint,
   changed: () => projects.changed(),
 })
+syncExportProfileSummary = exportUi.syncProfileSummary
 chat = setupChat({
   ...shared,
   editorSnapshot,

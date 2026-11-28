@@ -560,5 +560,5 @@ export function setupExports({
     }
   }
 
-  return { openZipExport }
+  return { openZipExport, syncProfileSummary }
 }
